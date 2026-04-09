@@ -58,14 +58,23 @@ function saveConfig() {
 }
 
 // ── Create Buddy Window (the wizard on screen) ──
+const BASE_BUDDY_W = 90;   // Base canvas width at 1x
+const BASE_BUDDY_H = 100;  // Base canvas height at 1x
+
+function getBuddySize(scale) {
+  const s = scale || config.wizardScale || 2;
+  return { w: Math.round(BASE_BUDDY_W * s), h: Math.round(BASE_BUDDY_H * s) };
+}
+
 function createBuddyWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const { w, h } = getBuddySize();
 
   buddyWindow = new BrowserWindow({
-    width: 180,
-    height: 200,
-    x: width - 220,
-    y: height - 200,
+    width: w,
+    height: h,
+    x: width - w - 40,
+    y: height - h,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -346,6 +355,15 @@ function setupIPC() {
       if (buddyWindow) buddyWindow.webContents.send('wizard-state', 'idle');
       return { error: `Network error: ${e.message}` };
     }
+  });
+
+  // ── Buddy resize ──
+  ipcMain.on('resize-buddy', (_, scale) => {
+    if (!buddyWindow) return;
+    const { w, h } = getBuddySize(scale);
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    buddyWindow.setSize(w, h);
+    buddyWindow.setPosition(width - w - 40, height - h);
   });
 
   // ── Text-to-Speech ──

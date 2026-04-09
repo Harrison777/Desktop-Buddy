@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('wizard', {
   ttsStopped: () => ipcRenderer.send('set-wizard-state', 'idle'),
 
   // Window controls
+  resizeBuddy: (scale) => ipcRenderer.send('resize-buddy', scale),
   closeChat: () => ipcRenderer.send('close-chat'),
   closeSettings: () => ipcRenderer.send('close-settings'),
   minimizeChat: () => ipcRenderer.send('minimize-chat'),

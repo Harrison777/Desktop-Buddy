@@ -135,7 +135,7 @@
 <body>
   <div id="wizard-container">
     <div id="speech-bubble"></div>
-    <canvas id="wizard-sprite" width="160" height="160"></canvas>
+    <canvas id="wizard-sprite" width="180" height="200"></canvas>
     <div id="glow-ring"></div>
     <div id="state-label">idle</div>
   </div>
@@ -201,6 +201,21 @@
     let sheetReady = false;
     let actualCellW = CELL_W;
     let actualCellH = CELL_H;
+    let wizardScale = 2; // default
+
+    // ── Scale Management ──
+    const BASE_W = 90;
+    const BASE_H = 100;
+
+    async function applyScale(scale) {
+      wizardScale = scale || 2;
+      const w = Math.round(BASE_W * wizardScale);
+      const h = Math.round(BASE_H * wizardScale);
+      canvas.width = w;
+      canvas.height = h;
+      // Tell main process to resize the BrowserWindow
+      wizard.resizeBuddy(wizardScale);
+    }
 
     // ── Checkerboard Removal via Flood Fill + Erosion ──
     // Phase 1: Flood fill from edges through neutral pixels.
@@ -368,8 +383,11 @@
 
     // Load sprite sheet
     spriteSheet.src = '../assets/wizard_spritesheet.png';
-    spriteSheet.onload = () => {
+    spriteSheet.onload = async () => {
       processSheet(spriteSheet);
+      // Load scale from config
+      const cfg = await wizard.getConfig();
+      await applyScale(cfg.wizardScale);
       requestAnimationFrame(animate);
     };
     spriteSheet.onerror = () => {
@@ -523,6 +541,13 @@
     canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       wizard.openSettings();
+    });
+
+    // Listen for config updates (scale change from settings)
+    wizard.onConfigUpdate(async (cfg) => {
+      if (cfg.wizardScale && cfg.wizardScale !== wizardScale) {
+        await applyScale(cfg.wizardScale);
+      }
     });
 
     // Initial greeting
