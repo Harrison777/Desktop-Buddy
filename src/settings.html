@@ -126,6 +126,8 @@
     .section-icon.api { background: linear-gradient(135deg, #059669, #10b981); }
     .section-icon.model { background: linear-gradient(135deg, var(--purple-primary), var(--purple-dim)); }
     .section-icon.behavior { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .section-icon.voice { background: linear-gradient(135deg, #38bdf8, #0ea5e9); }
+    .section-icon.voice::after { content: ''; }
 
     .section-title {
       font-size: 13px;
@@ -440,6 +442,82 @@
           </div>
         </div>
       </div>
+
+      <!-- Voice & TTS -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-icon voice">🔊</div>
+          <span class="section-title">Voice & Speech</span>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">Enable Text-to-Speech</span>
+          <label class="toggle">
+            <input type="checkbox" id="tts-toggle">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">Auto-speak responses</span>
+          <label class="toggle">
+            <input type="checkbox" id="tts-autospeak">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <span class="help-text" style="margin-bottom: 10px; display: block;">When enabled, the wizard will automatically read every response aloud</span>
+
+        <div class="field">
+          <label>TTS Provider</label>
+          <select id="tts-provider">
+            <option value="openai">OpenAI TTS</option>
+            <option value="elevenlabs">ElevenLabs</option>
+            <option value="custom">Custom Endpoint</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>TTS API Key <span style="color: var(--text-dim);">(leave blank to use main key)</span></label>
+          <input type="password" id="tts-api-key" placeholder="sk-... (optional)" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label>Voice</label>
+          <select id="tts-voice">
+            <optgroup label="OpenAI Voices" id="openai-voices">
+              <option value="alloy">Alloy (neutral)</option>
+              <option value="echo">Echo (male)</option>
+              <option value="fable" selected>Fable (storyteller)</option>
+              <option value="onyx">Onyx (deep male)</option>
+              <option value="nova">Nova (light female)</option>
+              <option value="shimmer">Shimmer (expressive)</option>
+            </optgroup>
+          </select>
+          <span class="help-text" id="voice-help">"Fable" is recommended for wizard storytelling</span>
+        </div>
+
+        <div class="field">
+          <label>TTS Model</label>
+          <select id="tts-model">
+            <option value="tts-1">TTS-1 (fast)</option>
+            <option value="tts-1-hd">TTS-1-HD (quality)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Speech Speed</label>
+          <div class="slider-row">
+            <input type="range" id="tts-speed" min="0.5" max="2.0" step="0.1" value="1.0">
+            <span class="slider-value" id="tts-speed-val">1.0x</span>
+          </div>
+        </div>
+
+        <div class="field" id="custom-endpoint-field" style="display: none;">
+          <label>Custom TTS Endpoint</label>
+          <input type="text" id="tts-endpoint" placeholder="https://your-tts-api.com/v1/audio/speech">
+          <span class="help-text">Must be OpenAI-compatible. Receives same JSON body as /v1/audio/speech</span>
+        </div>
+      </div>
     </div>
 
     <div id="save-bar">
@@ -461,6 +539,19 @@
     const longIdleVal = document.getElementById('long-idle-val');
     const scaleVal = document.getElementById('scale-val');
 
+    // TTS elements
+    const ttsToggle = document.getElementById('tts-toggle');
+    const ttsAutoSpeak = document.getElementById('tts-autospeak');
+    const ttsProviderSelect = document.getElementById('tts-provider');
+    const ttsApiKeyInput = document.getElementById('tts-api-key');
+    const ttsVoiceSelect = document.getElementById('tts-voice');
+    const ttsModelSelect = document.getElementById('tts-model');
+    const ttsSpeedSlider = document.getElementById('tts-speed');
+    const ttsSpeedVal = document.getElementById('tts-speed-val');
+    const ttsEndpointInput = document.getElementById('tts-endpoint');
+    const customEndpointField = document.getElementById('custom-endpoint-field');
+    const voiceHelp = document.getElementById('voice-help');
+
     // ── Format helpers ──
     function formatTime(seconds) {
       if (seconds < 60) return seconds + 's';
@@ -481,6 +572,76 @@
       scaleVal.textContent = scaleSlider.value + 'x';
     });
 
+    ttsSpeedSlider.addEventListener('input', () => {
+      ttsSpeedVal.textContent = parseFloat(ttsSpeedSlider.value).toFixed(1) + 'x';
+    });
+
+    // Provider switching — update voice options & show/hide custom endpoint
+    ttsProviderSelect.addEventListener('change', () => {
+      updateProviderUI(ttsProviderSelect.value);
+    });
+
+    function updateProviderUI(provider) {
+      const voiceSelect = ttsVoiceSelect;
+      customEndpointField.style.display = provider === 'custom' ? 'flex' : 'none';
+
+      // Clear and rebuild voice options
+      voiceSelect.innerHTML = '';
+
+      if (provider === 'openai') {
+        const group = document.createElement('optgroup');
+        group.label = 'OpenAI Voices';
+        const voices = [
+          ['alloy', 'Alloy (neutral)'],
+          ['echo', 'Echo (male)'],
+          ['fable', 'Fable (storyteller)'],
+          ['onyx', 'Onyx (deep male)'],
+          ['nova', 'Nova (light female)'],
+          ['shimmer', 'Shimmer (expressive)']
+        ];
+        voices.forEach(([val, label]) => {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = label;
+          group.appendChild(opt);
+        });
+        voiceSelect.appendChild(group);
+        voiceSelect.value = 'fable';
+        voiceHelp.textContent = '"Fable" is recommended for wizard storytelling';
+
+        ttsModelSelect.innerHTML = '<option value="tts-1">TTS-1 (fast)</option><option value="tts-1-hd">TTS-1-HD (quality)</option>';
+      } else if (provider === 'elevenlabs') {
+        const group = document.createElement('optgroup');
+        group.label = 'ElevenLabs Voice IDs';
+        const voices = [
+          ['21m00Tcm4TlvDq8ikWAM', 'Rachel (default)'],
+          ['AZnzlk1XvdvUeBnXmlld', 'Domi'],
+          ['EXAVITQu4vr4xnSDxMaL', 'Bella'],
+          ['MF3mGyEYCl7XYWbV9V6O', 'Elli'],
+          ['TxGEqnHWrfWFTfGW9XjX', 'Josh'],
+          ['VR6AewLTigWG4xSOukaG', 'Arnold']
+        ];
+        voices.forEach(([val, label]) => {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = label;
+          group.appendChild(opt);
+        });
+        voiceSelect.appendChild(group);
+        voiceHelp.textContent = 'Enter a custom Voice ID or use a preset';
+
+        ttsModelSelect.innerHTML = '<option value="eleven_monolingual_v1">Monolingual V1</option><option value="eleven_multilingual_v2">Multilingual V2</option>';
+      } else {
+        const opt = document.createElement('option');
+        opt.value = 'alloy';
+        opt.textContent = 'alloy (default)';
+        voiceSelect.appendChild(opt);
+        voiceHelp.textContent = 'Voice name depends on your custom endpoint';
+
+        ttsModelSelect.innerHTML = '<option value="tts-1">tts-1</option>';
+      }
+    }
+
     // ── Load config ──
     async function loadSettings() {
       const config = await wizard.getConfig();
@@ -491,10 +652,26 @@
       longIdleSlider.value = config.longIdleSeconds || 7200;
       scaleSlider.value = config.wizardScale || 2;
 
+      // TTS settings
+      ttsToggle.checked = config.ttsEnabled || false;
+      ttsAutoSpeak.checked = config.ttsAutoSpeak || false;
+      ttsProviderSelect.value = config.ttsProvider || 'openai';
+      ttsApiKeyInput.value = config.ttsApiKey || '';
+      ttsSpeedSlider.value = config.ttsSpeed || 1.0;
+      ttsEndpointInput.value = config.ttsCustomEndpoint || '';
+
+      // Rebuild voice UI for current provider
+      updateProviderUI(ttsProviderSelect.value);
+
+      // Set current voice/model after provider rebuild
+      if (config.ttsVoice) ttsVoiceSelect.value = config.ttsVoice;
+      if (config.ttsModel) ttsModelSelect.value = config.ttsModel;
+
       // Update display values
       shortIdleVal.textContent = formatTime(parseInt(shortIdleSlider.value));
       longIdleVal.textContent = formatTime(parseInt(longIdleSlider.value));
       scaleVal.textContent = scaleSlider.value + 'x';
+      ttsSpeedVal.textContent = parseFloat(ttsSpeedSlider.value).toFixed(1) + 'x';
     }
 
     // ── Save ──
@@ -505,7 +682,16 @@
         animationsEnabled: animToggle.checked,
         shortIdleSeconds: parseInt(shortIdleSlider.value),
         longIdleSeconds: parseInt(longIdleSlider.value),
-        wizardScale: parseFloat(scaleSlider.value)
+        wizardScale: parseFloat(scaleSlider.value),
+        // TTS
+        ttsEnabled: ttsToggle.checked,
+        ttsAutoSpeak: ttsAutoSpeak.checked,
+        ttsProvider: ttsProviderSelect.value,
+        ttsApiKey: ttsApiKeyInput.value.trim(),
+        ttsVoice: ttsVoiceSelect.value,
+        ttsModel: ttsModelSelect.value,
+        ttsSpeed: parseFloat(ttsSpeedSlider.value),
+        ttsCustomEndpoint: ttsEndpointInput.value.trim()
       });
 
       const toast = document.getElementById('toast');

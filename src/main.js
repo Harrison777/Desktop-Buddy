@@ -17,7 +17,16 @@ const DEFAULT_CONFIG = {
   animationsEnabled: true,
   wizardScale: 2,
   shortIdleSeconds: 120,
-  longIdleSeconds: 7200
+  longIdleSeconds: 7200,
+  // TTS Settings
+  ttsEnabled: false,
+  ttsProvider: 'openai',       // 'openai', 'elevenlabs', or 'custom'
+  ttsApiKey: '',               // Separate key for TTS (or blank to reuse main key)
+  ttsVoice: 'fable',           // OpenAI: alloy, echo, fable, onyx, nova, shimmer
+  ttsModel: 'tts-1',           // OpenAI: tts-1, tts-1-hd
+  ttsSpeed: 1.0,               // 0.25 - 4.0
+  ttsCustomEndpoint: '',       // For custom provider
+  ttsAutoSpeak: false          // Auto-speak all responses
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -118,10 +127,10 @@ function createSettingsWindow() {
 
   settingsWindow = new BrowserWindow({
     width: 480,
-    height: 560,
+    height: 720,
     frame: false,
     transparent: true,
-    resizable: false,
+    resizable: true,
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -336,6 +345,102 @@ function setupIPC() {
     } catch (e) {
       if (buddyWindow) buddyWindow.webContents.send('wizard-state', 'idle');
       return { error: `Network error: ${e.message}` };
+    }
+  });
+
+  // ── Text-to-Speech ──
+  ipcMain.handle('tts-request', async (_, text) => {
+    const ttsKey = config.ttsApiKey || config.apiKey;
+    if (!ttsKey || !config.ttsEnabled) {
+      return { error: 'TTS not configured or disabled' };
+    }
+
+    try {
+      let audioBuffer;
+
+      if (config.ttsProvider === 'openai') {
+        // OpenAI TTS API
+        const response = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ttsKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: config.ttsModel || 'tts-1',
+            input: text.substring(0, 4096), // API limit
+            voice: config.ttsVoice || 'fable',
+            speed: config.ttsSpeed || 1.0,
+            response_format: 'mp3'
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          return { error: `TTS API Error ${response.status}: ${errText}` };
+        }
+
+        const arrayBuf = await response.arrayBuffer();
+        audioBuffer = Buffer.from(arrayBuf).toString('base64');
+
+      } else if (config.ttsProvider === 'elevenlabs') {
+        // ElevenLabs TTS API
+        const voiceId = config.ttsVoice || '21m00Tcm4TlvDq8ikWAM'; // Default Rachel
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: {
+            'xi-api-key': ttsKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: text.substring(0, 5000),
+            model_id: config.ttsModel || 'eleven_monolingual_v1'
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          return { error: `ElevenLabs Error ${response.status}: ${errText}` };
+        }
+
+        const arrayBuf = await response.arrayBuffer();
+        audioBuffer = Buffer.from(arrayBuf).toString('base64');
+
+      } else if (config.ttsProvider === 'custom') {
+        // Custom endpoint — expects OpenAI-compatible API
+        const endpoint = config.ttsCustomEndpoint;
+        if (!endpoint) return { error: 'Custom TTS endpoint not configured' };
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ttsKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: config.ttsModel || 'tts-1',
+            input: text.substring(0, 4096),
+            voice: config.ttsVoice || 'alloy',
+            speed: config.ttsSpeed || 1.0,
+            response_format: 'mp3'
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          return { error: `Custom TTS Error ${response.status}: ${errText}` };
+        }
+
+        const arrayBuf = await response.arrayBuffer();
+        audioBuffer = Buffer.from(arrayBuf).toString('base64');
+      }
+
+      // Notify buddy to enter talking state
+      if (buddyWindow) buddyWindow.webContents.send('wizard-state', 'talking');
+
+      return { audio: audioBuffer, format: 'mp3' };
+    } catch (e) {
+      return { error: `TTS network error: ${e.message}` };
     }
   });
 

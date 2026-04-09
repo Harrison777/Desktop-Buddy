@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('wizard', {
   onChatChunk: (cb) => ipcRenderer.on('chat-chunk', (_, chunk) => cb(chunk)),
   onChatComplete: (cb) => ipcRenderer.on('chat-complete', (_, full) => cb(full)),
 
+  // TTS
+  requestTTS: (text) => ipcRenderer.invoke('tts-request', text),
+  ttsStopped: () => ipcRenderer.send('set-wizard-state', 'idle'),
+
   // Window controls
   closeChat: () => ipcRenderer.send('close-chat'),
   closeSettings: () => ipcRenderer.send('close-settings'),

@@ -197,6 +197,84 @@
       border: 1px solid var(--border-color);
       color: var(--text-primary);
       border-bottom-left-radius: 4px;
+      position: relative;
+    }
+
+    /* ── TTS Speak Button ── */
+    .msg-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .message.wizard:hover .msg-actions {
+      opacity: 1;
+    }
+
+    .msg-actions .speak-btn {
+      background: rgba(168, 85, 247, 0.15);
+      border: 1px solid rgba(168, 85, 247, 0.25);
+      color: var(--text-secondary);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .msg-actions .speak-btn:hover {
+      background: rgba(168, 85, 247, 0.3);
+      border-color: var(--purple-primary);
+      color: var(--text-primary);
+      transform: translateY(-1px);
+    }
+
+    .msg-actions .speak-btn.speaking {
+      background: linear-gradient(135deg, var(--purple-primary), var(--purple-dim));
+      border-color: var(--purple-primary);
+      color: white;
+      animation: speakPulse 1.5s ease-in-out infinite;
+    }
+
+    .msg-actions .speak-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    @keyframes speakPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+      50% { box-shadow: 0 0 10px 3px rgba(168, 85, 247, 0.2); }
+    }
+
+    .msg-actions .speak-btn .eq-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 1px;
+      height: 10px;
+    }
+
+    .msg-actions .speak-btn .eq-bars span {
+      display: block;
+      width: 2px;
+      background: currentColor;
+      border-radius: 1px;
+      animation: eqBounce 0.8s ease-in-out infinite;
+    }
+
+    .msg-actions .speak-btn .eq-bars span:nth-child(1) { height: 40%; animation-delay: 0s; }
+    .msg-actions .speak-btn .eq-bars span:nth-child(2) { height: 70%; animation-delay: 0.15s; }
+    .msg-actions .speak-btn .eq-bars span:nth-child(3) { height: 50%; animation-delay: 0.3s; }
+    .msg-actions .speak-btn .eq-bars span:nth-child(4) { height: 80%; animation-delay: 0.1s; }
+
+    @keyframes eqBounce {
+      0%, 100% { height: 30%; }
+      50% { height: 100%; }
     }
 
     /* Typing indicator */
@@ -391,6 +469,9 @@
       <div class="suggestion-chip" onclick="sendSuggestion('Give me a fun fact')">📚 Fun fact</div>
     </div>
 
+    <!-- Hidden audio player for TTS -->
+    <audio id="tts-audio" style="display: none;"></audio>
+
     <!-- Input -->
     <div id="input-area">
       <textarea id="message-input" placeholder="Speak to the wizard..." rows="1" autofocus></textarea>
@@ -406,15 +487,21 @@
     const modelBadge = document.getElementById('model-badge');
     const modelName = document.getElementById('model-name');
     const suggestionsEl = document.getElementById('suggestions');
+    const ttsAudio = document.getElementById('tts-audio');
 
     let chatHistory = [];
     let isStreaming = false;
     let currentStreamEl = null;
+    let activeSpeakBtn = null;  // Currently speaking button
+    let ttsEnabled = false;
+    let ttsAutoSpeak = false;
 
     // ── Init ──
     async function init() {
       const config = await wizard.getConfig();
       updateModelBadge(config);
+      ttsEnabled = config.ttsEnabled || false;
+      ttsAutoSpeak = config.ttsAutoSpeak || false;
     }
 
     function updateModelBadge(config) {
@@ -432,7 +519,7 @@
     }
 
     // ── Messages ──
-    function addMessage(role, content) {
+    function addMessage(role, content, addSpeakBtn = false) {
       if (welcomeEl.style.display !== 'none') {
         welcomeEl.style.display = 'none';
         messagesEl.style.display = 'flex';
@@ -451,6 +538,23 @@
 
       msg.appendChild(label);
       msg.appendChild(bubble);
+
+      // Add speak button for wizard messages
+      if (role === 'wizard' && addSpeakBtn && ttsEnabled) {
+        const actions = document.createElement('div');
+        actions.className = 'msg-actions';
+
+        const speakBtn = document.createElement('button');
+        speakBtn.className = 'speak-btn';
+        speakBtn.innerHTML = '🔊 Listen';
+        speakBtn.onclick = () => speakText(content, speakBtn);
+
+        actions.appendChild(speakBtn);
+        msg.appendChild(actions);
+        actions.style.opacity = '1'; // Show immediately for new messages
+        setTimeout(() => actions.style.opacity = '', 3000);
+      }
+
       messagesEl.appendChild(msg);
       messagesEl.scrollTop = messagesEl.scrollHeight;
 
@@ -541,6 +645,28 @@
     wizard.onChatComplete((fullText) => {
       if (currentStreamEl) {
         currentStreamEl.textContent = fullText;
+
+        // Add speak button to the completed message
+        if (ttsEnabled) {
+          const msg = currentStreamEl.closest('.message');
+          const actions = document.createElement('div');
+          actions.className = 'msg-actions';
+          actions.style.opacity = '1';
+
+          const speakBtn = document.createElement('button');
+          speakBtn.className = 'speak-btn';
+          speakBtn.innerHTML = '🔊 Listen';
+          speakBtn.onclick = () => speakText(fullText, speakBtn);
+
+          actions.appendChild(speakBtn);
+          msg.appendChild(actions);
+          setTimeout(() => actions.style.opacity = '', 4000);
+
+          // Auto-speak if enabled
+          if (ttsAutoSpeak) {
+            speakText(fullText, speakBtn);
+          }
+        }
       }
       chatHistory.push({ role: 'assistant', content: fullText });
       streamContent = '';
@@ -548,8 +674,75 @@
       messagesEl.scrollTop = messagesEl.scrollHeight;
     });
 
+    // ── TTS Playback ──
+    async function speakText(text, btnEl) {
+      // If already speaking, stop
+      if (activeSpeakBtn === btnEl) {
+        stopSpeaking();
+        return;
+      }
+
+      // Stop any current playback
+      stopSpeaking();
+
+      // Mark button as speaking
+      activeSpeakBtn = btnEl;
+      btnEl.classList.add('speaking');
+      btnEl.innerHTML = '<span class="eq-bars"><span></span><span></span><span></span><span></span></span> Speaking...';
+      btnEl.disabled = false;
+
+      try {
+        const result = await wizard.requestTTS(text);
+
+        if (result.error) {
+          console.error('TTS Error:', result.error);
+          resetSpeakBtn(btnEl);
+          return;
+        }
+
+        // Play the audio
+        const audioSrc = `data:audio/${result.format};base64,${result.audio}`;
+        ttsAudio.src = audioSrc;
+        ttsAudio.onended = () => {
+          resetSpeakBtn(btnEl);
+          activeSpeakBtn = null;
+          wizard.ttsStopped();
+        };
+        ttsAudio.onerror = () => {
+          console.error('Audio playback error');
+          resetSpeakBtn(btnEl);
+          activeSpeakBtn = null;
+          wizard.ttsStopped();
+        };
+        await ttsAudio.play();
+      } catch (e) {
+        console.error('TTS failed:', e);
+        resetSpeakBtn(btnEl);
+        activeSpeakBtn = null;
+      }
+    }
+
+    function stopSpeaking() {
+      ttsAudio.pause();
+      ttsAudio.currentTime = 0;
+      if (activeSpeakBtn) {
+        resetSpeakBtn(activeSpeakBtn);
+        activeSpeakBtn = null;
+      }
+      wizard.ttsStopped();
+    }
+
+    function resetSpeakBtn(btn) {
+      btn.classList.remove('speaking');
+      btn.innerHTML = '🔊 Listen';
+    }
+
     // ── Config updates ──
-    wizard.onConfigUpdate((config) => updateModelBadge(config));
+    wizard.onConfigUpdate((config) => {
+      updateModelBadge(config);
+      ttsEnabled = config.ttsEnabled || false;
+      ttsAutoSpeak = config.ttsAutoSpeak || false;
+    });
 
     // ── Input handling ──
     inputEl.addEventListener('keydown', (e) => {
