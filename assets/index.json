@@ -1,7 +1,10 @@
 {
-  "spriteSheet": "wizard_spritesheet.png",
-  "frameWidth": 128,
-  "frameHeight": 128,
+  "spriteSheet": "wizard_spritesheet_transparent.png",
+  "layout": {
+    "type": "grid",
+    "columns": 4,
+    "rows": 3
+  },
   "totalFrames": 10,
   "states": {
     "idle": {
@@ -46,16 +49,16 @@
       "trigger": "API_Request_Pending == true"
     }
   },
-  "frameMap": {
-    "0": "Neutral Idle",
-    "1": "Talking - Closed",
-    "2": "Talking - Slight Open",
-    "3": "Talking - Wide Open",
-    "4": "Talking - Round",
-    "5": "Reading",
-    "6": "Sleeping",
-    "7": "Laughing",
-    "8": "Sad",
-    "9": "Researching"
+  "frames": {
+    "0": { "name": "Neutral Idle", "grid": [0, 0] },
+    "1": { "name": "Talking - Closed", "grid": [1, 0] },
+    "2": { "name": "Talking - Slight Open", "grid": [2, 0] },
+    "3": { "name": "Talking - Wide Open", "grid": [3, 0] },
+    "4": { "name": "Talking - Round", "grid": [0, 1] },
+    "5": { "name": "Reading", "grid": [2, 1] },
+    "6": { "name": "Sleeping", "grid": [3, 1] },
+    "7": { "name": "Laughing", "grid": [0, 2] },
+    "8": { "name": "Sad", "grid": [2, 2] },
+    "9": { "name": "Researching", "grid": [3, 2] }
   }
 }

@@ -7,6 +7,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('wizard', {
   // Config
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getAnimationManifest: () => ipcRenderer.invoke('get-animation-manifest'),
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
 
   // Chat

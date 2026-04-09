@@ -152,35 +152,30 @@
     // We map grid positions (col, row) to frame indices.
     // ══════════════════════════════════════════════════
 
-    const GRID_COLS = 4;
-    const GRID_ROWS = 3;
-
-    // Each cell in the 1024x1024 grid
-    const CELL_W = 256;  // 1024 / 4
-    const CELL_H = 341;  // ~1024 / 3 (last row may be slightly shorter)
-
-    // Grid position [col, row] for each named frame
-    const FRAME_GRID = {
-      0: [0, 0],  // Neutral Idle
-      1: [1, 0],  // Talking 1
-      2: [2, 0],  // Talking 2
-      3: [3, 0],  // Talking 3
-      4: [0, 1],  // Talking 4
-      5: [2, 1],  // Reading (at desk)
-      6: [3, 1],  // Sleeping
-      7: [0, 2],  // Laughing
-      8: [2, 2],  // Sad
-      9: [3, 2],  // Researching (with book/magic)
-    };
-
-    const FRAME_MAP = {
-      idle:        { frames: [0], fps: 1 },
-      talking:     { frames: [1, 2, 3, 4], fps: 6 },
-      reading:     { frames: [5], fps: 1 },
-      sleeping:    { frames: [6], fps: 0.5 },
-      laughing:    { frames: [7], fps: 2 },
-      sad:         { frames: [8], fps: 1 },
-      researching: { frames: [9], fps: 2 }
+    const DEFAULT_MANIFEST = {
+      spriteSheet: 'wizard_spritesheet.png',
+      layout: { type: 'grid', columns: 4, rows: 3 },
+      states: {
+        idle:        { frames: [0], fps: 1 },
+        talking:     { frames: [1, 2, 3, 4], fps: 6 },
+        reading:     { frames: [5], fps: 1 },
+        sleeping:    { frames: [6], fps: 0.5 },
+        laughing:    { frames: [7], fps: 2 },
+        sad:         { frames: [8], fps: 1 },
+        researching: { frames: [9], fps: 2 }
+      },
+      frames: {
+        0: { grid: [0, 0] },
+        1: { grid: [1, 0] },
+        2: { grid: [2, 0] },
+        3: { grid: [3, 0] },
+        4: { grid: [0, 1] },
+        5: { grid: [2, 1] },
+        6: { grid: [3, 1] },
+        7: { grid: [0, 2] },
+        8: { grid: [2, 2] },
+        9: { grid: [3, 2] }
+      }
     };
 
     const canvas = document.getElementById('wizard-sprite');
@@ -198,9 +193,20 @@
     let breathOffset = 0;
     let zBubbleTimer = 0;
     let sheetReady = false;
-    let actualCellW = CELL_W;
-    let actualCellH = CELL_H;
+    let actualCellW = 256;
+    let actualCellH = 341;
     let wizardScale = 2; // default
+    let animationManifest = DEFAULT_MANIFEST;
+    let frameGrid = {};
+    let frameMap = DEFAULT_MANIFEST.states;
+    let driftOffsetX = 0;
+    let hoverOffsetY = 0;
+    let tiltRadians = 0;
+    let squashX = 1;
+    let squashY = 1;
+    let blinkAmount = 0;
+    let blinkClock = 0;
+    let nextBlinkAt = 0;
 
     // ── Scale Management ──
     const BASE_W = 90;
@@ -214,6 +220,114 @@
       canvas.height = h;
       // Tell main process to resize the BrowserWindow
       wizard.resizeBuddy(wizardScale);
+    }
+
+    function isCalmState(state) {
+      return state === 'idle' || state === 'reading' || state === 'researching';
+    }
+
+    function scheduleNextBlink(timestamp) {
+      nextBlinkAt = timestamp + 1800 + Math.random() * 3200;
+    }
+
+    function updateMicroMotion(timestamp, dt) {
+      if (!lastTime) {
+        scheduleNextBlink(timestamp);
+      }
+
+      if (currentState === 'idle') {
+        breathOffset = Math.sin(timestamp / 1400) * 0.85;
+        driftOffsetX = Math.sin(timestamp / 2400) * 0.45 + Math.sin(timestamp / 5100) * 0.2;
+        hoverOffsetY = Math.cos(timestamp / 3000) * 0.22;
+        tiltRadians = Math.sin(timestamp / 4200) * 0.008;
+        squashX = 1 + Math.sin(timestamp / 1400) * 0.003;
+        squashY = 1 - Math.sin(timestamp / 1400) * 0.004;
+      } else if (currentState === 'reading') {
+        breathOffset = Math.sin(timestamp / 1700) * 0.45;
+        driftOffsetX = Math.sin(timestamp / 3200) * 0.2;
+        hoverOffsetY = Math.cos(timestamp / 2800) * 0.12;
+        tiltRadians = Math.sin(timestamp / 3600) * 0.005;
+        squashX = 1;
+        squashY = 1;
+      } else if (currentState === 'researching') {
+        breathOffset = Math.sin(timestamp / 1100) * 0.35;
+        driftOffsetX = Math.sin(timestamp / 1500) * 0.18;
+        hoverOffsetY = Math.cos(timestamp / 1300) * 0.18;
+        tiltRadians = Math.sin(timestamp / 1900) * 0.006;
+        squashX = 1;
+        squashY = 1;
+      } else if (currentState === 'sleeping') {
+        breathOffset = Math.sin(timestamp / 1650) * 1.2;
+        driftOffsetX = Math.sin(timestamp / 3600) * 0.12;
+        hoverOffsetY = 0;
+        tiltRadians = Math.sin(timestamp / 4200) * 0.004;
+        squashX = 1 + Math.sin(timestamp / 1650) * 0.003;
+        squashY = 1 - Math.sin(timestamp / 1650) * 0.005;
+      } else {
+        breathOffset = 0;
+        driftOffsetX = 0;
+        hoverOffsetY = 0;
+        tiltRadians = 0;
+        squashX = 1;
+        squashY = 1;
+      }
+
+      if (!isCalmState(currentState)) {
+        blinkAmount = 0;
+        blinkClock = 0;
+        nextBlinkAt = timestamp + 1200;
+        return;
+      }
+
+      if (!nextBlinkAt) {
+        scheduleNextBlink(timestamp);
+      }
+
+      if (timestamp >= nextBlinkAt) {
+        blinkClock += dt * 7.5;
+        const blinkPhase = Math.min(blinkClock, 1);
+        blinkAmount = Math.sin(blinkPhase * Math.PI) ** 1.6;
+        if (blinkClock >= 1) {
+          blinkClock = 0;
+          blinkAmount = 0;
+          scheduleNextBlink(timestamp);
+        }
+      } else {
+        blinkAmount = 0;
+      }
+    }
+
+    function drawBlinkOverlay() {
+      if (blinkAmount <= 0.01 || currentState === 'sleeping') return;
+
+      const lidDrop = canvas.height * (0.003 + blinkAmount * 0.02);
+      const eyeWidth = canvas.width * 0.05;
+      const eyeGap = canvas.width * 0.115;
+      const eyeY = canvas.height * 0.245 + hoverOffsetY * 0.08;
+      const leftCenterX = canvas.width * 0.5 - eyeGap * 0.5;
+      const rightCenterX = canvas.width * 0.5 + eyeGap * 0.5;
+      const arcLift = canvas.height * 0.008;
+
+      ctx.save();
+      ctx.strokeStyle = `rgba(36, 18, 60, ${0.28 + blinkAmount * 0.38})`;
+      ctx.lineWidth = Math.max(1.35, canvas.width * 0.009);
+      ctx.lineCap = 'round';
+
+      for (const centerX of [leftCenterX, rightCenterX]) {
+        ctx.beginPath();
+        ctx.moveTo(centerX - eyeWidth, eyeY);
+        ctx.quadraticCurveTo(centerX, eyeY + lidDrop - arcLift, centerX + eyeWidth, eyeY);
+        ctx.stroke();
+
+        if (blinkAmount > 0.45) {
+          ctx.beginPath();
+          ctx.moveTo(centerX - eyeWidth * 0.5, eyeY + lidDrop * 0.42);
+          ctx.quadraticCurveTo(centerX, eyeY + lidDrop * 0.8, centerX + eyeWidth * 0.5, eyeY + lidDrop * 0.42);
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
     }
 
     // ── Checkerboard Removal via Flood Fill + Erosion ──
@@ -231,7 +345,7 @@
         const r = d[idx], g = d[idx+1], b = d[idx+2];
         const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
         const avg = (r + g + b) / 3;
-        return spread < 50 && avg > 80;
+        return spread < 22 && avg > 110 && avg < 245;
       }
 
       // Helper: is this pixel "semi-neutral" (for erosion cleanup)?
@@ -239,7 +353,7 @@
         const r = d[idx], g = d[idx+1], b = d[idx+2];
         const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
         const avg = (r + g + b) / 3;
-        return spread < 70 && avg > 70;
+        return spread < 28 && avg > 105 && avg < 240;
       }
 
       // ── Phase 1: BFS Flood Fill from edges ──
@@ -312,7 +426,7 @@
         const r = d[i], g = d[i+1], b = d[i+2];
         const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
         const avg = (r + g + b) / 3;
-        if (spread < 20 && avg > 185) {
+        if (spread < 10 && avg > 205 && avg < 245) {
           d[i + 3] = 0;
         }
       }
@@ -329,7 +443,7 @@
             const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
             const avg = (r + g + b) / 3;
             // Only erode if pixel is clearly neutral (not colored art)
-            if (spread >= 55 || avg <= 60) continue;
+            if (spread >= 18 || avg <= 105 || avg >= 240) continue;
 
             let hasTransparentNeighbor = false;
             if (x > 0     && d[((y)*w+(x-1))*4+3] === 0) hasTransparentNeighbor = true;
@@ -338,6 +452,107 @@
             if (y < h - 1 && d[((y+1)*w+x)*4+3] === 0) hasTransparentNeighbor = true;
 
             if (hasTransparentNeighbor) toErase.push(idx);
+          }
+        }
+        for (const idx of toErase) d[idx + 3] = 0;
+      }
+
+      offCtx.putImageData(imageData, 0, 0);
+      return srcCanvas;
+    }
+
+    function removeCheckerboardBySamples(srcCanvas) {
+      const w = srcCanvas.width;
+      const h = srcCanvas.height;
+      const offCtx = srcCanvas.getContext('2d');
+      const imageData = offCtx.getImageData(0, 0, w, h);
+      const d = imageData.data;
+
+      function samplePixel(x, y) {
+        const idx = (y * w + x) * 4;
+        return { r: d[idx], g: d[idx + 1], b: d[idx + 2], a: d[idx + 3] };
+      }
+
+      const backgroundSamples = [
+        samplePixel(0, 0),
+        samplePixel(w - 1, 0),
+        samplePixel(0, h - 1),
+        samplePixel(w - 1, h - 1),
+        samplePixel(Math.floor(w / 2), 0),
+        samplePixel(Math.floor(w / 2), h - 1),
+        samplePixel(0, Math.floor(h / 2)),
+        samplePixel(w - 1, Math.floor(h / 2))
+      ].filter(sample => sample.a > 0);
+
+      function isBackgroundColor(idx, tolerance = 28) {
+        const r = d[idx], g = d[idx + 1], b = d[idx + 2], a = d[idx + 3];
+        if (a === 0) return false;
+        const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+        if (spread > 18) return false;
+        return backgroundSamples.some(sample =>
+          Math.abs(sample.r - r) + Math.abs(sample.g - g) + Math.abs(sample.b - b) <= tolerance
+        );
+      }
+
+      function isKeyGreen(idx) {
+        return d[idx] === 57 && d[idx + 1] === 255 && d[idx + 2] === 20;
+      }
+
+      const visited = new Uint8Array(w * h);
+      const queue = [];
+
+      for (let x = 0; x < w; x++) {
+        queue.push(x);
+        queue.push((h - 1) * w + x);
+      }
+      for (let y = 0; y < h; y++) {
+        queue.push(y * w);
+        queue.push(y * w + (w - 1));
+      }
+
+      for (let i = 0; i < d.length; i += 4) {
+        if (isBackgroundColor(i, 24)) {
+          d[i] = 57;
+          d[i + 1] = 255;
+          d[i + 2] = 20;
+          d[i + 3] = 255;
+        }
+      }
+
+      let head = 0;
+      while (head < queue.length) {
+        const pos = queue[head++];
+        if (pos < 0 || pos >= w * h || visited[pos]) continue;
+        visited[pos] = 1;
+
+        const idx = pos * 4;
+        if (!isKeyGreen(idx)) continue;
+
+        d[idx + 3] = 0;
+
+        const x = pos % w;
+        const y = Math.floor(pos / w);
+        if (x > 0) queue.push(pos - 1);
+        if (x < w - 1) queue.push(pos + 1);
+        if (y > 0) queue.push(pos - w);
+        if (y < h - 1) queue.push(pos + w);
+      }
+
+      for (let pass = 0; pass < 2; pass++) {
+        const toErase = [];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 4;
+            if (d[idx + 3] === 0) continue;
+            if (!isBackgroundColor(idx, 34)) continue;
+
+            const touchesTransparent =
+              (x > 0 && d[((y) * w + (x - 1)) * 4 + 3] === 0) ||
+              (x < w - 1 && d[((y) * w + (x + 1)) * 4 + 3] === 0) ||
+              (y > 0 && d[((y - 1) * w + x) * 4 + 3] === 0) ||
+              (y < h - 1 && d[((y + 1) * w + x) * 4 + 3] === 0);
+
+            if (touchesTransparent) toErase.push(idx);
           }
         }
         for (const idx of toErase) d[idx + 3] = 0;
@@ -358,7 +573,6 @@
       const sy = row * actualCellH;
 
       fCtx.drawImage(img, sx, sy, actualCellW, actualCellH, 0, 0, actualCellW, actualCellH);
-      removeCheckerboard(fc);
       return fc;
     }
 
@@ -366,13 +580,17 @@
     function processSheet(img) {
       const sw = img.naturalWidth;
       const sh = img.naturalHeight;
+      const layout = animationManifest.layout || DEFAULT_MANIFEST.layout;
+      const columns = layout.columns || DEFAULT_MANIFEST.layout.columns;
+      const rows = layout.rows || DEFAULT_MANIFEST.layout.rows;
 
-      actualCellW = Math.floor(sw / GRID_COLS);
-      actualCellH = Math.floor(sh / GRID_ROWS);
+      actualCellW = Math.floor(sw / columns);
+      actualCellH = Math.floor(sh / rows);
 
       console.log(`Sheet: ${sw}x${sh}, cell: ${actualCellW}x${actualCellH}`);
 
-      for (const [frameIdx, [col, row]] of Object.entries(FRAME_GRID)) {
+      processedFrames = {};
+      for (const [frameIdx, [col, row]] of Object.entries(frameGrid)) {
         processedFrames[frameIdx] = extractFrame(img, col, row);
       }
 
@@ -380,19 +598,47 @@
       console.log(`Processed ${Object.keys(processedFrames).length} frames`);
     }
 
-    // Load sprite sheet
-    spriteSheet.src = '../assets/wizard_spritesheet.png';
-    spriteSheet.onload = async () => {
-      processSheet(spriteSheet);
-      // Load scale from config
-      const cfg = await wizard.getConfig();
-      await applyScale(cfg.wizardScale);
-      requestAnimationFrame(animate);
-    };
-    spriteSheet.onerror = () => {
-      console.warn('Sprite sheet not found, using placeholder');
-      requestAnimationFrame(animate);
-    };
+    function normalizeManifest(manifest) {
+      const safeManifest = manifest || DEFAULT_MANIFEST;
+      frameMap = safeManifest.states || DEFAULT_MANIFEST.states;
+      frameGrid = Object.fromEntries(
+        Object.entries(safeManifest.frames || DEFAULT_MANIFEST.frames)
+          .map(([frameIdx, frameData]) => [frameIdx, frameData.grid])
+      );
+      animationManifest = {
+        ...DEFAULT_MANIFEST,
+        ...safeManifest,
+        layout: {
+          ...DEFAULT_MANIFEST.layout,
+          ...(safeManifest.layout || {})
+        }
+      };
+    }
+
+    async function loadManifest() {
+      const manifest = await wizard.getAnimationManifest();
+      normalizeManifest(manifest);
+    }
+
+    async function initBuddy() {
+      await loadManifest();
+
+      spriteSheet.onload = async () => {
+        processSheet(spriteSheet);
+        const cfg = await wizard.getConfig();
+        await applyScale(cfg.wizardScale);
+        requestAnimationFrame(animate);
+      };
+
+      spriteSheet.onerror = async () => {
+        console.warn('Sprite sheet not found, using placeholder');
+        const cfg = await wizard.getConfig();
+        await applyScale(cfg.wizardScale);
+        requestAnimationFrame(animate);
+      };
+
+      spriteSheet.src = `../assets/${animationManifest.spriteSheet || DEFAULT_MANIFEST.spriteSheet}`;
+    }
 
     function drawPlaceholder() {
       ctx.fillStyle = '#1a0a30';
@@ -408,21 +654,16 @@
       const dt = (timestamp - lastTime) / 1000;
       lastTime = timestamp;
 
-      const stateConfig = FRAME_MAP[currentState] || FRAME_MAP.idle;
+      const stateConfig = frameMap[currentState] || frameMap.idle || DEFAULT_MANIFEST.states.idle;
       const fps = stateConfig.fps || 1;
+
+      updateMicroMotion(timestamp, Math.max(0, dt || 0));
 
       animTick += dt;
 
       if (animTick >= 1 / fps) {
         animTick = 0;
         frameIndex = (frameIndex + 1) % stateConfig.frames.length;
-      }
-
-      // Breathing effect for idle/sleeping
-      if (currentState === 'idle' || currentState === 'sleeping') {
-        breathOffset = Math.sin(timestamp / 800) * 1.5;
-      } else {
-        breathOffset = 0;
       }
 
       // Clear and draw
@@ -434,10 +675,16 @@
 
         if (frameCanvas) {
           ctx.save();
-          ctx.translate(0, breathOffset);
+          ctx.translate(
+            canvas.width / 2 + driftOffsetX,
+            canvas.height / 2 + breathOffset + hoverOffsetY
+          );
+          ctx.rotate(tiltRadians);
+          ctx.scale(squashX, squashY);
           // Draw the frame, fitting into our display canvas
-          ctx.drawImage(frameCanvas, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(frameCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
           ctx.restore();
+          drawBlinkOverlay();
         } else {
           drawPlaceholder();
         }
@@ -596,6 +843,8 @@
     setTimeout(() => {
       showSpeechBubble('🧙 Greetings! Double-click to chat!', 4000);
     }, 1500);
+
+    initBuddy();
   </script>
 </body>
 </html>

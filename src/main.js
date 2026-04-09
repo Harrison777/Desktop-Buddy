@@ -274,6 +274,15 @@ function startIdleMonitor() {
 function setupIPC() {
   // Config — renderers never see raw API keys
   ipcMain.handle('get-config', () => getSafeConfig());
+  ipcMain.handle('get-animation-manifest', () => {
+    const manifestPath = path.join(ASSETS, 'index.json');
+    try {
+      return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    } catch (e) {
+      console.error('Animation manifest load error:', e);
+      return null;
+    }
+  });
 
   ipcMain.handle('save-config', (_, newConfig) => {
     const merged = { ...config, ...newConfig };
