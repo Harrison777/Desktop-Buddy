@@ -5,13 +5,23 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "make-icon": "node scripts/create-icon.js",
+    "create-shortcut": "node scripts/create-shortcut.js",
+    "install-desktop": "npm run make-icon && npm run create-shortcut"
   },
-  "keywords": ["desktop-buddy", "wizard", "ai", "electron"],
+  "keywords": [
+    "desktop-buddy",
+    "wizard",
+    "ai",
+    "electron"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^41.2.0"
+    "electron": "^41.2.0",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
   }
 }
