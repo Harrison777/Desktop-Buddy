@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('wizard', {
 
   // Window controls
   resizeBuddy: (scale) => ipcRenderer.send('resize-buddy', scale),
+  moveBuddy: (dx, dy) => ipcRenderer.send('move-buddy', dx, dy),
   closeChat: () => ipcRenderer.send('close-chat'),
   closeSettings: () => ipcRenderer.send('close-settings'),
   minimizeChat: () => ipcRenderer.send('minimize-chat'),

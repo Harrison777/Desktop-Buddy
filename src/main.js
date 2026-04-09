@@ -2,7 +2,7 @@
 // Desktop Wizard — Main Process
 // Electron main process: manages tray, windows, idle detection
 // ============================================================
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, powerMonitor, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, powerMonitor, nativeImage, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -36,14 +36,41 @@ let chatWindow = null;
 let settingsWindow = null;
 let idleCheckInterval = null;
 let lastActivityTime = Date.now();
+let returnToIdleTimer = null;
+let sentimentResetTimer = null;
 
 // ── Config persistence ──
+// API keys are encrypted at rest with Electron's safeStorage (OS keychain/DPAPI).
+// On disk: { ..., apiKeyEnc: "<base64>", ttsApiKeyEnc: "<base64>" } — plaintext
+// apiKey/ttsApiKey fields are never persisted once encryption is available.
 function loadConfig() {
   try {
-    if (fs.existsSync(CONFIG_PATH)) {
-      const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-      config = { ...DEFAULT_CONFIG, ...data };
+    if (!fs.existsSync(CONFIG_PATH)) return;
+    const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    config = { ...DEFAULT_CONFIG, ...data };
+
+    if (safeStorage.isEncryptionAvailable()) {
+      if (data.apiKeyEnc) {
+        try {
+          config.apiKey = safeStorage.decryptString(Buffer.from(data.apiKeyEnc, 'base64'));
+        } catch (e) {
+          console.error('apiKey decrypt failed:', e);
+          config.apiKey = '';
+        }
+      }
+      if (data.ttsApiKeyEnc) {
+        try {
+          config.ttsApiKey = safeStorage.decryptString(Buffer.from(data.ttsApiKeyEnc, 'base64'));
+        } catch (e) {
+          console.error('ttsApiKey decrypt failed:', e);
+          config.ttsApiKey = '';
+        }
+      }
     }
+
+    // Strip encrypted fields from in-memory config; they live only on disk
+    delete config.apiKeyEnc;
+    delete config.ttsApiKeyEnc;
   } catch (e) {
     console.error('Config load error:', e);
   }
@@ -51,10 +78,30 @@ function loadConfig() {
 
 function saveConfig() {
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    const toSave = { ...config };
+    if (safeStorage.isEncryptionAvailable()) {
+      if (config.apiKey) {
+        toSave.apiKeyEnc = safeStorage.encryptString(config.apiKey).toString('base64');
+      }
+      if (config.ttsApiKey) {
+        toSave.ttsApiKeyEnc = safeStorage.encryptString(config.ttsApiKey).toString('base64');
+      }
+      // Never write plaintext keys to disk when encryption is available
+      delete toSave.apiKey;
+      delete toSave.ttsApiKey;
+    }
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(toSave, null, 2));
   } catch (e) {
     console.error('Config save error:', e);
   }
+}
+
+// Returns a copy of config safe to send to renderer processes — secrets are
+// replaced with boolean "has*" flags so the UI can show state without ever
+// holding the raw key.
+function getSafeConfig() {
+  const { apiKey, ttsApiKey, ...rest } = config;
+  return { ...rest, hasApiKey: !!apiKey, hasTtsApiKey: !!ttsApiKey };
 }
 
 // ── Create Buddy Window (the wizard on screen) ──
@@ -225,14 +272,19 @@ function startIdleMonitor() {
 
 // ── IPC Handlers ──
 function setupIPC() {
-  // Config
-  ipcMain.handle('get-config', () => config);
+  // Config — renderers never see raw API keys
+  ipcMain.handle('get-config', () => getSafeConfig());
 
   ipcMain.handle('save-config', (_, newConfig) => {
-    config = { ...config, ...newConfig };
+    const merged = { ...config, ...newConfig };
+    // Empty string from the renderer means "don't change" — this lets the
+    // settings UI omit secrets from its form without wiping them on save.
+    if (!newConfig.apiKey)    merged.apiKey    = config.apiKey;
+    if (!newConfig.ttsApiKey) merged.ttsApiKey = config.ttsApiKey;
+    config = merged;
     saveConfig();
-    if (buddyWindow) buddyWindow.webContents.send('config-update', config);
-    return config;
+    if (buddyWindow) buddyWindow.webContents.send('config-update', getSafeConfig());
+    return getSafeConfig();
   });
 
   // Chat with OpenRouter
@@ -240,6 +292,11 @@ function setupIPC() {
     if (!config.apiKey) {
       return { error: 'No API key configured. Open Arcane Settings to set your OpenRouter key.' };
     }
+
+    // Cancel any pending state-reset timers from a previous request —
+    // otherwise they fire mid-stream and force the wizard back to 'idle'.
+    if (returnToIdleTimer) { clearTimeout(returnToIdleTimer); returnToIdleTimer = null; }
+    if (sentimentResetTimer) { clearTimeout(sentimentResetTimer); sentimentResetTimer = null; }
 
     // Check user message for sentiment triggers
     const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
@@ -249,14 +306,16 @@ function setupIPC() {
     if (userLaughWords.some(w => lastUserMsg.includes(w))) {
       if (buddyWindow) buddyWindow.webContents.send('wizard-state', 'laughing');
       // Reset after 3 seconds
-      setTimeout(() => {
+      sentimentResetTimer = setTimeout(() => {
+        sentimentResetTimer = null;
         if (buddyWindow && !buddyWindow.isDestroyed()) {
           buddyWindow.webContents.send('wizard-state', 'researching');
         }
       }, 3000);
     } else if (userSadWords.some(w => lastUserMsg.includes(w))) {
       if (buddyWindow) buddyWindow.webContents.send('wizard-state', 'sad');
-      setTimeout(() => {
+      sentimentResetTimer = setTimeout(() => {
+        sentimentResetTimer = null;
         if (buddyWindow && !buddyWindow.isDestroyed()) {
           buddyWindow.webContents.send('wizard-state', 'researching');
         }
@@ -338,7 +397,8 @@ function setupIPC() {
       if (buddyWindow) {
         buddyWindow.webContents.send('wizard-state', sentiment);
         // Return to idle after emotion display
-        setTimeout(() => {
+        returnToIdleTimer = setTimeout(() => {
+          returnToIdleTimer = null;
           if (buddyWindow && !buddyWindow.isDestroyed()) {
             buddyWindow.webContents.send('wizard-state', 'idle');
           }
@@ -364,6 +424,13 @@ function setupIPC() {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
     buddyWindow.setSize(w, h);
     buddyWindow.setPosition(width - w - 40, height - h);
+  });
+
+  // ── Buddy drag (custom drag handler, no -webkit-app-region) ──
+  ipcMain.on('move-buddy', (_, dx, dy) => {
+    if (!buddyWindow) return;
+    const [x, y] = buddyWindow.getPosition();
+    buddyWindow.setPosition(x + dx, y + dy);
   });
 
   // ── Text-to-Speech ──
@@ -451,6 +518,12 @@ function setupIPC() {
 
         const arrayBuf = await response.arrayBuffer();
         audioBuffer = Buffer.from(arrayBuf).toString('base64');
+      } else {
+        return { error: `Unknown TTS provider: ${config.ttsProvider}` };
+      }
+
+      if (!audioBuffer) {
+        return { error: 'TTS returned no audio data' };
       }
 
       // Notify buddy to enter talking state

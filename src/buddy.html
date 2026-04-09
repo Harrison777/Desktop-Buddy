@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;">
   <title>Desktop Wizard</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -12,7 +13,6 @@
       width: 100%;
       height: 100%;
       user-select: none;
-      -webkit-app-region: drag;
     }
 
     #wizard-container {
@@ -69,7 +69,6 @@
     #wizard-sprite {
       image-rendering: pixelated;
       image-rendering: crisp-edges;
-      -webkit-app-region: drag;
       cursor: pointer;
       transition: filter 0.3s ease;
     }
@@ -531,10 +530,53 @@
       }
     });
 
-    // Double-click opens chat
-    canvas.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      wizard.openChat();
+    // ── Custom Drag + Double-Click System ──
+    // We can't use -webkit-app-region: drag because it eats all mouse events.
+    // Instead we handle dragging manually and detect double-clicks ourselves.
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let hasMoved = false;
+    let lastClickTime = 0;
+    const DOUBLE_CLICK_MS = 400;
+    const DRAG_THRESHOLD = 5;  // px before we consider it a drag, not a click
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // left button
+        isDragging = true;
+        hasMoved = false;
+        dragStartX = e.screenX;
+        dragStartY = e.screenY;
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.screenX - dragStartX;
+      const dy = e.screenY - dragStartY;
+      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+        hasMoved = true;
+        wizard.moveBuddy(dx, dy);
+        dragStartX = e.screenX;
+        dragStartY = e.screenY;
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // If we didn't drag, treat it as a click → check for double click
+      if (!hasMoved && e.button === 0) {
+        const now = Date.now();
+        if (now - lastClickTime < DOUBLE_CLICK_MS) {
+          // Double-click detected!
+          wizard.openChat();
+          lastClickTime = 0;
+        } else {
+          lastClickTime = now;
+        }
+      }
     });
 
     // Right-click opens settings

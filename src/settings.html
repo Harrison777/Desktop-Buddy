@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';">
   <title>Arcane Settings</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=MedievalSharp&display=swap" rel="stylesheet">
@@ -645,7 +646,10 @@
     // ── Load config ──
     async function loadSettings() {
       const config = await wizard.getConfig();
-      apiKeyInput.value = config.apiKey || '';
+      // API keys are never sent to the renderer — show a sentinel placeholder
+      // when one is saved. Leaving the field blank on save preserves it.
+      apiKeyInput.value = '';
+      apiKeyInput.placeholder = config.hasApiKey ? '••••••••  (saved — leave blank to keep)' : 'sk-or-v1-...';
       modelSelect.value = config.model || 'openai/gpt-4o-mini';
       animToggle.checked = config.animationsEnabled !== false;
       shortIdleSlider.value = config.shortIdleSeconds || 120;
@@ -656,7 +660,8 @@
       ttsToggle.checked = config.ttsEnabled || false;
       ttsAutoSpeak.checked = config.ttsAutoSpeak || false;
       ttsProviderSelect.value = config.ttsProvider || 'openai';
-      ttsApiKeyInput.value = config.ttsApiKey || '';
+      ttsApiKeyInput.value = '';
+      ttsApiKeyInput.placeholder = config.hasTtsApiKey ? '••••••••  (saved — leave blank to keep)' : 'sk-... (optional)';
       ttsSpeedSlider.value = config.ttsSpeed || 1.0;
       ttsEndpointInput.value = config.ttsCustomEndpoint || '';
 
