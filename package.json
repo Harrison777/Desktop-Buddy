@@ -1,0 +1,17 @@
+{
+  "name": "desktop-wizard",
+  "version": "1.0.0",
+  "description": "The Desktop Wizard - An AI-driven Desktop Buddy",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": ["desktop-buddy", "wizard", "ai", "electron"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^41.2.0"
+  }
+}

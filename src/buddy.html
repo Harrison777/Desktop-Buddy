@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Desktop Wizard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    #wizard-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    /* Speech bubble */
+    #speech-bubble {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20, 10, 40, 0.92);
+      border: 2px solid #a855f7;
+      border-radius: 12px;
+      padding: 8px 12px;
+      color: #e0d0ff;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 11px;
+      max-width: 170px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      box-shadow:
+        0 0 12px rgba(168, 85, 247, 0.3),
+        inset 0 0 8px rgba(168, 85, 247, 0.1);
+    }
+
+    #speech-bubble.visible {
+      opacity: 1;
+    }
+
+    #speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid #a855f7;
+    }
+
+    /* Sprite canvas */
+    #wizard-sprite {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      -webkit-app-region: drag;
+      cursor: pointer;
+      transition: filter 0.3s ease;
+    }
+
+    #wizard-sprite:hover {
+      filter: brightness(1.15) drop-shadow(0 0 8px rgba(168, 85, 247, 0.6));
+    }
+
+    /* Z bubbles for sleeping */
+    .z-bubble {
+      position: absolute;
+      font-size: 18px;
+      color: #c084fc;
+      animation: floatZ 2s ease-out forwards;
+      pointer-events: none;
+      text-shadow: 0 0 6px rgba(192, 132, 252, 0.6);
+    }
+
+    @keyframes floatZ {
+      0% { opacity: 1; transform: translate(0, 0) scale(0.6); }
+      50% { opacity: 0.8; transform: translate(-10px, -25px) scale(1); }
+      100% { opacity: 0; transform: translate(-20px, -50px) scale(1.2); }
+    }
+
+    /* Glow ring under wizard */
+    #glow-ring {
+      position: absolute;
+      bottom: 5px;
+      width: 80px;
+      height: 16px;
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(168, 85, 247, 0.4) 0%, transparent 70%);
+      transition: all 0.5s ease;
+    }
+
+    #glow-ring.researching {
+      background: radial-gradient(ellipse, rgba(56, 189, 248, 0.5) 0%, transparent 70%);
+      animation: pulseGlow 1.5s ease-in-out infinite;
+    }
+
+    #glow-ring.sleeping {
+      background: radial-gradient(ellipse, rgba(100, 100, 160, 0.2) 0%, transparent 70%);
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(1); opacity: 0.6; }
+      50% { transform: scale(1.15); opacity: 1; }
+    }
+
+    /* State label */
+    #state-label {
+      position: absolute;
+      bottom: -2px;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 9px;
+      color: rgba(200, 180, 255, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="wizard-container">
+    <div id="speech-bubble"></div>
+    <canvas id="wizard-sprite" width="160" height="160"></canvas>
+    <div id="glow-ring"></div>
+    <div id="state-label">idle</div>
+  </div>
+
+  <script>
+    // ══════════════════════════════════════════════════
+    // SPRITE SHEET LAYOUT
+    // The generated image is a 1024x1024 JPEG
+    // arranged in a 4-column × 3-row grid.
+    //
+    // Row 0: Idle, Talk1, Talk2, Talk3
+    // Row 1: Talk4, Reading, Sleeping, (unused/sad)
+    // Row 2: Laughing, Laughing2, Sad, Researching
+    //
+    // We map grid positions (col, row) to frame indices.
+    // ══════════════════════════════════════════════════
+
+    const GRID_COLS = 4;
+    const GRID_ROWS = 3;
+
+    // Each cell in the 1024x1024 grid
+    const CELL_W = 256;  // 1024 / 4
+    const CELL_H = 341;  // ~1024 / 3 (last row may be slightly shorter)
+
+    // Grid position [col, row] for each named frame
+    const FRAME_GRID = {
+      0: [0, 0],  // Neutral Idle
+      1: [1, 0],  // Talking 1
+      2: [2, 0],  // Talking 2
+      3: [3, 0],  // Talking 3
+      4: [0, 1],  // Talking 4
+      5: [2, 1],  // Reading (at desk)
+      6: [3, 1],  // Sleeping
+      7: [0, 2],  // Laughing
+      8: [2, 2],  // Sad
+      9: [3, 2],  // Researching (with book/magic)
+    };
+
+    const FRAME_MAP = {
+      idle:        { frames: [0], fps: 1 },
+      talking:     { frames: [1, 2, 3, 4], fps: 6 },
+      reading:     { frames: [5], fps: 1 },
+      sleeping:    { frames: [6], fps: 0.5 },
+      laughing:    { frames: [7], fps: 2 },
+      sad:         { frames: [8], fps: 1 },
+      researching: { frames: [9], fps: 2 }
+    };
+
+    const canvas = document.getElementById('wizard-sprite');
+    const ctx = canvas.getContext('2d');
+    const speechBubble = document.getElementById('speech-bubble');
+    const glowRing = document.getElementById('glow-ring');
+    const stateLabel = document.getElementById('state-label');
+
+    let spriteSheet = new Image();
+    let processedFrames = {};  // Cache of pre-processed per-frame canvases
+    let currentState = 'idle';
+    let frameIndex = 0;
+    let animTick = 0;
+    let lastTime = 0;
+    let breathOffset = 0;
+    let zBubbleTimer = 0;
+    let sheetReady = false;
+    let actualCellW = CELL_W;
+    let actualCellH = CELL_H;
+
+    // ── Checkerboard Removal via Flood Fill + Erosion ──
+    // Phase 1: Flood fill from edges through neutral pixels.
+    // Phase 2: Erosion passes to clean JPEG-blended boundary pixels.
+    function removeCheckerboard(srcCanvas) {
+      const w = srcCanvas.width;
+      const h = srcCanvas.height;
+      const offCtx = srcCanvas.getContext('2d');
+      const imageData = offCtx.getImageData(0, 0, w, h);
+      const d = imageData.data;
+
+      // Helper: is this pixel neutral enough for flood fill?
+      function isNeutral(idx) {
+        const r = d[idx], g = d[idx+1], b = d[idx+2];
+        const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+        const avg = (r + g + b) / 3;
+        return spread < 50 && avg > 80;
+      }
+
+      // Helper: is this pixel "semi-neutral" (for erosion cleanup)?
+      function isSemiNeutral(idx) {
+        const r = d[idx], g = d[idx+1], b = d[idx+2];
+        const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+        const avg = (r + g + b) / 3;
+        return spread < 70 && avg > 70;
+      }
+
+      // ── Phase 1: BFS Flood Fill from edges ──
+      const visited = new Uint8Array(w * h);
+      const queue = [];
+
+      for (let x = 0; x < w; x++) {
+        queue.push(x);
+        queue.push((h - 1) * w + x);
+      }
+      for (let y = 0; y < h; y++) {
+        queue.push(y * w);
+        queue.push(y * w + (w - 1));
+      }
+
+      let head = 0;
+      while (head < queue.length) {
+        const pos = queue[head++];
+        if (pos < 0 || pos >= w * h || visited[pos]) continue;
+        visited[pos] = 1;
+
+        const idx = pos * 4;
+        if (!isNeutral(idx)) continue;
+
+        d[idx + 3] = 0;
+
+        const x = pos % w;
+        const y = Math.floor(pos / w);
+        if (x > 0)     queue.push(pos - 1);
+        if (x < w - 1) queue.push(pos + 1);
+        if (y > 0)     queue.push(pos - w);
+        if (y < h - 1) queue.push(pos + w);
+      }
+
+      // ── Phase 2: Erosion passes ──
+      // Any semi-neutral pixel touching a transparent pixel gets removed.
+      // Run multiple passes to erode inward through JPEG boundary blur.
+      for (let pass = 0; pass < 3; pass++) {
+        const toErase = [];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const pos = y * w + x;
+            const idx = pos * 4;
+            if (d[idx + 3] === 0) continue; // already transparent
+            if (!isSemiNeutral(idx)) continue;
+
+            // Check if any neighbor is transparent
+            const neighbors = [];
+            if (x > 0)     neighbors.push(((y) * w + (x-1)) * 4);
+            if (x < w - 1) neighbors.push(((y) * w + (x+1)) * 4);
+            if (y > 0)     neighbors.push(((y-1) * w + x) * 4);
+            if (y < h - 1) neighbors.push(((y+1) * w + x) * 4);
+
+            const touchesTransparent = neighbors.some(ni => d[ni + 3] === 0);
+            if (touchesTransparent) {
+              toErase.push(idx);
+            }
+          }
+        }
+        for (const idx of toErase) {
+          d[idx + 3] = 0;
+        }
+      }
+
+      // ── Phase 3: Seed trapped pockets ──
+      // Only target the BRIGHT checkerboard squares in enclosed areas.
+      // The subsequent erosion will expand from these to catch darker ones.
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue;
+        const r = d[i], g = d[i+1], b = d[i+2];
+        const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+        const avg = (r + g + b) / 3;
+        if (spread < 20 && avg > 185) {
+          d[i + 3] = 0;
+        }
+      }
+
+      // ── Phase 4: Targeted erosion around pockets ──
+      // Expand transparency from Phase 3 holes into adjacent neutral pixels.
+      for (let pass = 0; pass < 3; pass++) {
+        const toErase = [];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 4;
+            if (d[idx + 3] === 0) continue;
+            const r = d[idx], g = d[idx+1], b = d[idx+2];
+            const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+            const avg = (r + g + b) / 3;
+            // Only erode if pixel is clearly neutral (not colored art)
+            if (spread >= 55 || avg <= 60) continue;
+
+            let hasTransparentNeighbor = false;
+            if (x > 0     && d[((y)*w+(x-1))*4+3] === 0) hasTransparentNeighbor = true;
+            if (x < w - 1 && d[((y)*w+(x+1))*4+3] === 0) hasTransparentNeighbor = true;
+            if (y > 0     && d[((y-1)*w+x)*4+3] === 0) hasTransparentNeighbor = true;
+            if (y < h - 1 && d[((y+1)*w+x)*4+3] === 0) hasTransparentNeighbor = true;
+
+            if (hasTransparentNeighbor) toErase.push(idx);
+          }
+        }
+        for (const idx of toErase) d[idx + 3] = 0;
+      }
+
+      offCtx.putImageData(imageData, 0, 0);
+      return srcCanvas;
+    }
+
+    // ── Extract & process a single frame from the grid ──
+    function extractFrame(img, col, row) {
+      const fc = document.createElement('canvas');
+      fc.width = actualCellW;
+      fc.height = actualCellH;
+      const fCtx = fc.getContext('2d');
+
+      const sx = col * actualCellW;
+      const sy = row * actualCellH;
+
+      fCtx.drawImage(img, sx, sy, actualCellW, actualCellH, 0, 0, actualCellW, actualCellH);
+      removeCheckerboard(fc);
+      return fc;
+    }
+
+    // ── Process the entire sheet into individual frames ──
+    function processSheet(img) {
+      const sw = img.naturalWidth;
+      const sh = img.naturalHeight;
+
+      actualCellW = Math.floor(sw / GRID_COLS);
+      actualCellH = Math.floor(sh / GRID_ROWS);
+
+      console.log(`Sheet: ${sw}x${sh}, cell: ${actualCellW}x${actualCellH}`);
+
+      for (const [frameIdx, [col, row]] of Object.entries(FRAME_GRID)) {
+        processedFrames[frameIdx] = extractFrame(img, col, row);
+      }
+
+      sheetReady = true;
+      console.log(`Processed ${Object.keys(processedFrames).length} frames`);
+    }
+
+    // Load sprite sheet
+    spriteSheet.src = '../assets/wizard_spritesheet.png';
+    spriteSheet.onload = () => {
+      processSheet(spriteSheet);
+      requestAnimationFrame(animate);
+    };
+    spriteSheet.onerror = () => {
+      console.warn('Sprite sheet not found, using placeholder');
+      requestAnimationFrame(animate);
+    };
+
+    function drawPlaceholder() {
+      ctx.fillStyle = '#1a0a30';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#a855f7';
+      ctx.font = '60px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🧙', canvas.width / 2, canvas.height / 2);
+    }
+
+    function animate(timestamp) {
+      const dt = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
+
+      const stateConfig = FRAME_MAP[currentState] || FRAME_MAP.idle;
+      const fps = stateConfig.fps || 1;
+
+      animTick += dt;
+
+      if (animTick >= 1 / fps) {
+        animTick = 0;
+        frameIndex = (frameIndex + 1) % stateConfig.frames.length;
+      }
+
+      // Breathing effect for idle/sleeping
+      if (currentState === 'idle' || currentState === 'sleeping') {
+        breathOffset = Math.sin(timestamp / 800) * 1.5;
+      } else {
+        breathOffset = 0;
+      }
+
+      // Clear and draw
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (sheetReady) {
+        const srcFrameIdx = stateConfig.frames[frameIndex];
+        const frameCanvas = processedFrames[srcFrameIdx];
+
+        if (frameCanvas) {
+          ctx.save();
+          ctx.translate(0, breathOffset);
+          // Draw the frame, fitting into our display canvas
+          ctx.drawImage(frameCanvas, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        } else {
+          drawPlaceholder();
+        }
+      } else {
+        drawPlaceholder();
+      }
+
+      // Z bubbles for sleeping
+      if (currentState === 'sleeping') {
+        zBubbleTimer += dt;
+        if (zBubbleTimer > 2) {
+          zBubbleTimer = 0;
+          spawnZBubble();
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function spawnZBubble() {
+      const z = document.createElement('div');
+      z.className = 'z-bubble';
+      z.textContent = 'Z';
+      z.style.right = `${30 + Math.random() * 20}px`;
+      z.style.top = `${20 + Math.random() * 15}px`;
+      z.style.fontSize = `${16 + Math.random() * 10}px`;
+      document.getElementById('wizard-container').appendChild(z);
+      setTimeout(() => z.remove(), 2000);
+    }
+
+    function setState(newState) {
+      if (newState === currentState) return;
+      currentState = newState;
+      frameIndex = 0;
+      animTick = 0;
+
+      // Update glow ring
+      glowRing.className = '';
+      if (newState === 'researching') glowRing.classList.add('researching');
+      if (newState === 'sleeping') glowRing.classList.add('sleeping');
+
+      // Update state label
+      const labels = {
+        idle: 'idle',
+        talking: 'speaking',
+        reading: 'reading',
+        sleeping: 'asleep',
+        laughing: 'amused',
+        sad: 'somber',
+        researching: 'researching'
+      };
+      stateLabel.textContent = labels[newState] || newState;
+    }
+
+    function showSpeechBubble(text, duration) {
+      speechBubble.textContent = text;
+      speechBubble.classList.add('visible');
+      setTimeout(() => speechBubble.classList.remove('visible'), duration || 3000);
+    }
+
+    // ── IPC Listeners ──
+    wizard.onWizardState((state) => {
+      setState(state);
+
+      const bubbleMessages = {
+        researching: '📚 Consulting the vast libraries...',
+        talking: '💬 Ah, let me share my wisdom...',
+        laughing: '😄 Ha ha! Most amusing!',
+        sad: '😔 The stars weep...',
+        sleeping: '💤 Zzz...',
+        reading: '📖 Fascinating text...'
+      };
+
+      if (bubbleMessages[state]) {
+        showSpeechBubble(bubbleMessages[state], state === 'sleeping' ? 5000 : 3000);
+      }
+    });
+
+    wizard.onIdleUpdate(({ state, idleTime, shortThreshold, longThreshold }) => {
+      // Only change state if not currently in an active state
+      if (['talking', 'researching', 'laughing', 'sad'].includes(currentState)) return;
+
+      if (idleTime >= longThreshold) {
+        setState('sleeping');
+      } else if (idleTime >= shortThreshold) {
+        setState('reading');
+      } else if (currentState === 'sleeping' || currentState === 'reading') {
+        setState('idle');
+        showSpeechBubble('✨ Back to the Arcane Ledge!', 2000);
+      }
+    });
+
+    // Double-click opens chat
+    canvas.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      wizard.openChat();
+    });
+
+    // Right-click opens settings
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      wizard.openSettings();
+    });
+
+    // Initial greeting
+    setTimeout(() => {
+      showSpeechBubble('🧙 Greetings! Double-click to chat!', 4000);
+    }, 1500);
+  </script>
+</body>
+</html>
