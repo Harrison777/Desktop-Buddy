@@ -26,7 +26,13 @@ const DEFAULT_CONFIG = {
   ttsModel: 'tts-1',           // OpenAI: tts-1, tts-1-hd
   ttsSpeed: 1.0,               // 0.25 - 4.0
   ttsCustomEndpoint: '',       // For custom provider
-  ttsAutoSpeak: false          // Auto-speak all responses
+  ttsAutoSpeak: false,          // Auto-speak all responses
+  // Weather Settings
+  weatherMode: 'none',           // 'none', 'rain', 'snow', 'lightning', 'storm'
+  weatherIntensity: 0.6,         // 0.0 - 1.0
+  weatherAutoSync: true,         // Auto-sync with real local weather
+  weatherLat: null,              // Manual latitude override (null = auto-detect)
+  weatherLon: null               // Manual longitude override (null = auto-detect)
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -35,6 +41,7 @@ let buddyWindow = null;
 let chatWindow = null;
 let settingsWindow = null;
 let idleCheckInterval = null;
+let weatherSyncInterval = null;
 let lastActivityTime = Date.now();
 let returnToIdleTimer = null;
 let sentimentResetTimer = null;
@@ -244,6 +251,56 @@ function createTray() {
     },
     { type: 'separator' },
     {
+      label: '🌦️ Weather Effects',
+      submenu: [
+        {
+          label: '📍 Sync to My Location',
+          type: 'checkbox',
+          checked: config.weatherAutoSync,
+          click: (menuItem) => {
+            config.weatherAutoSync = menuItem.checked;
+            saveConfig();
+            if (menuItem.checked) {
+              fetchLiveWeather();  // Immediately sync
+            }
+            createTray();  // Rebuild menu to update radio states
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '☀️ Clear (None)',
+          type: 'radio',
+          checked: config.weatherMode === 'none',
+          click: () => { config.weatherAutoSync = false; setWeatherMode('none'); createTray(); }
+        },
+        {
+          label: '🌧️ Rain',
+          type: 'radio',
+          checked: config.weatherMode === 'rain',
+          click: () => { config.weatherAutoSync = false; setWeatherMode('rain'); createTray(); }
+        },
+        {
+          label: '❄️ Snow',
+          type: 'radio',
+          checked: config.weatherMode === 'snow',
+          click: () => { config.weatherAutoSync = false; setWeatherMode('snow'); createTray(); }
+        },
+        {
+          label: '⚡ Lightning',
+          type: 'radio',
+          checked: config.weatherMode === 'lightning',
+          click: () => { config.weatherAutoSync = false; setWeatherMode('lightning'); createTray(); }
+        },
+        {
+          label: '⛈️ Storm (Rain + Lightning)',
+          type: 'radio',
+          checked: config.weatherMode === 'storm',
+          click: () => { config.weatherAutoSync = false; setWeatherMode('storm'); createTray(); }
+        }
+      ]
+    },
+    { type: 'separator' },
+    {
       label: '🚪 Dismiss Wizard',
       click: () => app.quit()
     }
@@ -251,6 +308,130 @@ function createTray() {
 
   tray.setContextMenu(contextMenu);
   tray.on('click', () => createChatWindow());
+}
+
+// ── Weather Control ──
+function setWeatherMode(mode, intensity) {
+  config.weatherMode = mode;
+  if (typeof intensity === 'number') config.weatherIntensity = intensity;
+  saveConfig();
+  if (buddyWindow && !buddyWindow.isDestroyed()) {
+    buddyWindow.webContents.send('weather-change', {
+      mode: config.weatherMode,
+      intensity: config.weatherIntensity
+    });
+  }
+}
+
+// ── Live Weather Sync ──
+// Uses Open-Meteo (free, no API key) + IP geolocation.
+// WMO Weather interpretation codes → wizard weather modes.
+//
+// Code ranges:
+//   0       → clear
+//   1-3     → partly cloudy → none
+//   45,48   → fog → none
+//   51-57   → drizzle → rain (light)
+//   61-67   → rain → rain
+//   71-77   → snow → snow
+//   80-82   → rain showers → rain
+//   85-86   → snow showers → snow
+//   95      → thunderstorm → storm
+//   96,99   → thunderstorm+hail → storm
+function mapWmoToWeather(code, precipMm) {
+  // Map intensity from precipitation mm/h
+  // 0-1mm = light (0.3), 1-5mm = medium (0.6), 5+mm = heavy (0.9)
+  let intensity = 0.4;
+  if (precipMm > 5)  intensity = 0.95;
+  else if (precipMm > 2) intensity = 0.7;
+  else if (precipMm > 0.5) intensity = 0.5;
+
+  if (code >= 95)              return { mode: 'storm', intensity: Math.max(intensity, 0.7) };
+  if (code >= 85 && code <= 86) return { mode: 'snow', intensity };
+  if (code >= 80 && code <= 82) return { mode: 'rain', intensity };
+  if (code >= 71 && code <= 77) return { mode: 'snow', intensity };
+  if (code >= 61 && code <= 67) return { mode: 'rain', intensity };
+  if (code >= 51 && code <= 57) return { mode: 'rain', intensity: Math.max(0.25, intensity * 0.6) };
+  // Clear, cloudy, fog → no weather effects
+  return { mode: 'none', intensity: 0 };
+}
+
+async function fetchGeoLocation() {
+  try {
+    // Use ip-api.com for free IP-based geolocation
+    const resp = await fetch('http://ip-api.com/json/?fields=lat,lon,city,regionName');
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    console.log(`Weather location: ${data.city}, ${data.regionName} (${data.lat}, ${data.lon})`);
+    return { lat: data.lat, lon: data.lon, city: data.city, region: data.regionName };
+  } catch (e) {
+    console.error('Geolocation failed:', e.message);
+    return null;
+  }
+}
+
+async function fetchLiveWeather() {
+  if (!config.weatherAutoSync) return;
+
+  try {
+    let lat = config.weatherLat;
+    let lon = config.weatherLon;
+
+    // Auto-detect location if not manually set
+    if (lat == null || lon == null) {
+      const geo = await fetchGeoLocation();
+      if (!geo) {
+        console.warn('Could not determine location for weather sync');
+        return;
+      }
+      lat = geo.lat;
+      lon = geo.lon;
+    }
+
+    // Fetch current weather from Open-Meteo (free, no key)
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,precipitation,temperature_2m,wind_speed_10m&timezone=auto`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.error(`Open-Meteo error: ${resp.status}`);
+      return;
+    }
+
+    const data = await resp.json();
+    const current = data.current;
+    const wmoCode = current.weather_code;
+    const precip = current.precipitation || 0;
+    const temp = current.temperature_2m;
+    const wind = current.wind_speed_10m;
+
+    const { mode, intensity } = mapWmoToWeather(wmoCode, precip);
+
+    console.log(`Live weather: WMO=${wmoCode}, precip=${precip}mm, temp=${temp}°C, wind=${wind}km/h → ${mode} @ ${(intensity * 100).toFixed(0)}%`);
+
+    // Apply to wizard
+    setWeatherMode(mode, intensity);
+
+    // Notify buddy of temperature for potential speech bubbles
+    if (buddyWindow && !buddyWindow.isDestroyed()) {
+      buddyWindow.webContents.send('weather-info', {
+        code: wmoCode,
+        temp,
+        wind,
+        precip,
+        mode,
+        intensity
+      });
+    }
+  } catch (e) {
+    console.error('Weather fetch failed:', e.message);
+  }
+}
+
+function startWeatherSync() {
+  // Initial fetch after a short delay (let the window load)
+  setTimeout(() => fetchLiveWeather(), 3000);
+
+  // Poll every 15 minutes
+  weatherSyncInterval = setInterval(() => fetchLiveWeather(), 15 * 60 * 1000);
 }
 
 // ── Idle Detection ──
@@ -282,6 +463,21 @@ function setupIPC() {
       console.error('Animation manifest load error:', e);
       return null;
     }
+  });
+
+  // Cursor position for eye-tracking
+  ipcMain.handle('get-cursor-pos', () => {
+    const cursor = screen.getCursorScreenPoint();
+    if (buddyWindow && !buddyWindow.isDestroyed()) {
+      const bounds = buddyWindow.getBounds();
+      return {
+        cursorX: cursor.x,
+        cursorY: cursor.y,
+        wizX: bounds.x + bounds.width / 2,
+        wizY: bounds.y + bounds.height / 2
+      };
+    }
+    return null;
   });
 
   ipcMain.handle('save-config', (_, newConfig) => {
@@ -555,6 +751,21 @@ function setupIPC() {
   ipcMain.on('set-wizard-state', (_, state) => {
     if (buddyWindow) buddyWindow.webContents.send('wizard-state', state);
   });
+
+  // Weather control
+  ipcMain.on('set-weather', (_, data) => {
+    config.weatherMode = data.mode || 'none';
+    if (typeof data.intensity === 'number') {
+      config.weatherIntensity = Math.max(0, Math.min(1, data.intensity));
+    }
+    saveConfig();
+    if (buddyWindow && !buddyWindow.isDestroyed()) {
+      buddyWindow.webContents.send('weather-change', {
+        mode: config.weatherMode,
+        intensity: config.weatherIntensity
+      });
+    }
+  });
 }
 
 // ── Simple Sentiment Analysis ──
@@ -579,6 +790,7 @@ app.whenReady().then(() => {
   createBuddyWindow();
   setupIPC();
   startIdleMonitor();
+  startWeatherSync();
 });
 
 app.on('window-all-closed', (e) => {
@@ -588,4 +800,5 @@ app.on('window-all-closed', (e) => {
 
 app.on('before-quit', () => {
   if (idleCheckInterval) clearInterval(idleCheckInterval);
+  if (weatherSyncInterval) clearInterval(weatherSyncInterval);
 });

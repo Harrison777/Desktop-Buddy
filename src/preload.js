@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('wizard', {
   onConfigUpdate: (cb) => ipcRenderer.on('config-update', (_, data) => cb(data)),
   onWizardState: (cb) => ipcRenderer.on('wizard-state', (_, state) => cb(state)),
   onIdleUpdate: (cb) => ipcRenderer.on('idle-update', (_, data) => cb(data)),
+  onWeatherChange: (cb) => ipcRenderer.on('weather-change', (_, data) => cb(data)),
   onChatChunk: (cb) => ipcRenderer.on('chat-chunk', (_, chunk) => cb(chunk)),
   onChatComplete: (cb) => ipcRenderer.on('chat-complete', (_, full) => cb(full)),
 
@@ -33,4 +34,8 @@ contextBridge.exposeInMainWorld('wizard', {
   openChat: () => ipcRenderer.send('open-chat'),
   openSettings: () => ipcRenderer.send('open-settings'),
   setWizardState: (state) => ipcRenderer.send('set-wizard-state', state),
+  setWeather: (mode, intensity) => ipcRenderer.send('set-weather', { mode, intensity }),
+
+  // Cursor tracking for eye-following
+  getCursorPos: () => ipcRenderer.invoke('get-cursor-pos'),
 });

@@ -77,6 +77,17 @@
       filter: brightness(1.15) drop-shadow(0 0 8px rgba(168, 85, 247, 0.6));
     }
 
+    /* Weather overlay canvas — sits on top of sprite */
+    #weather-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
     /* Z bubbles for sleeping */
     .z-bubble {
       position: absolute;
@@ -135,6 +146,7 @@
   <div id="wizard-container">
     <div id="speech-bubble"></div>
     <canvas id="wizard-sprite" width="180" height="200"></canvas>
+    <canvas id="weather-canvas" width="180" height="200"></canvas>
     <div id="glow-ring"></div>
     <div id="state-label" style="display:none;"></div>
   </div>
@@ -180,6 +192,8 @@
 
     const canvas = document.getElementById('wizard-sprite');
     const ctx = canvas.getContext('2d');
+    const weatherCanvas = document.getElementById('weather-canvas');
+    const wCtx = weatherCanvas.getContext('2d');
     const speechBubble = document.getElementById('speech-bubble');
     const glowRing = document.getElementById('glow-ring');
     const stateLabel = document.getElementById('state-label');
@@ -208,6 +222,355 @@
     let blinkClock = 0;
     let nextBlinkAt = 0;
 
+    // ── Cursor / Eye-Tracking ──
+    // gazeX, gazeY: normalized direction to cursor (-1…+1)
+    // Updated every 100ms via IPC polling.
+    let gazeX = 0;           // -1 = looking left, +1 = right
+    let gazeY = 0;           // -1 = looking up,   +1 = down
+    let gazeSmoothedX = 0;   // lerp-smoothed for silky movement
+    let gazeSmoothedY = 0;
+    let cursorDistance = 0;   // pixel distance from wizard to cursor
+
+    // ══════════════════════════════════════════════════
+    // WEATHER PARTICLE SYSTEM
+    // Procedural particles — no sprite sheets needed.
+    // Colors chosen to pop against the wizard's
+    // navy-blue-and-purple palette.
+    //
+    // Rain:      Cyan (#00FFFF) needle-thin streaks
+    // Snow:      Blue-tinted white + 1px black outline
+    // Lightning: Neon Magenta bolts (arcane feel)
+    //
+    // The weather-canvas uses mix-blend-mode: screen
+    // so dark pixels vanish and bright particles glow
+    // additively over the wizard sprite.
+    // ══════════════════════════════════════════════════
+
+    let weatherMode = 'none'; // 'none' | 'rain' | 'snow' | 'lightning' | 'storm'
+    let weatherParticles = [];
+    let weatherIntensity = 0.6; // 0.0 – 1.0
+    let lightningTimer = 0;
+    let lightningFlash = 0;
+    let lightningBolts = [];
+    let windAngle = 0.15; // slight eastward wind
+
+    // ── Rain Particle ──
+    function spawnRainDrop() {
+      return {
+        type: 'rain',
+        x: Math.random() * weatherCanvas.width * 1.4 - weatherCanvas.width * 0.2,
+        y: -Math.random() * weatherCanvas.height * 0.5,
+        vx: 0.6 + Math.random() * 0.8,
+        vy: 5 + Math.random() * 7,
+        length: 6 + Math.random() * 10,
+        alpha: 0.35 + Math.random() * 0.55,
+        width: 0.6 + Math.random() * 0.8
+      };
+    }
+
+    // ── Snow Particle ──
+    function spawnSnowflake() {
+      const size = 1.5 + Math.random() * 3.5;
+      return {
+        type: 'snow',
+        x: Math.random() * weatherCanvas.width * 1.3 - weatherCanvas.width * 0.15,
+        y: -Math.random() * weatherCanvas.height * 0.3,
+        vx: -0.15 + Math.random() * 0.3,
+        vy: 0.5 + Math.random() * 1.5,
+        size: size,
+        alpha: 0.5 + Math.random() * 0.45,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 1.5 + Math.random() * 2,
+        wobbleAmp: 0.4 + Math.random() * 0.6,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (-0.5 + Math.random()) * 0.03
+      };
+    }
+
+    // ── Lightning Bolt Generator ──
+    // Creates a jagged bolt from top to bottom with random forks.
+    function generateLightningBolt() {
+      const startX = weatherCanvas.width * 0.2 + Math.random() * weatherCanvas.width * 0.6;
+      const points = [{ x: startX, y: 0 }];
+      let cx = startX;
+      let cy = 0;
+      const segments = 6 + Math.floor(Math.random() * 8);
+      const segH = weatherCanvas.height / segments;
+
+      const forks = [];
+
+      for (let i = 0; i < segments; i++) {
+        cx += (-1 + Math.random() * 2) * (8 + Math.random() * 14);
+        cy += segH * (0.7 + Math.random() * 0.5);
+        points.push({ x: cx, y: cy });
+
+        // Random fork (30% chance)
+        if (Math.random() < 0.3 && i > 1 && i < segments - 1) {
+          const forkPoints = [{ x: cx, y: cy }];
+          let fx = cx;
+          let fy = cy;
+          const forkLen = 2 + Math.floor(Math.random() * 3);
+          const forkDir = Math.random() < 0.5 ? -1 : 1;
+          for (let j = 0; j < forkLen; j++) {
+            fx += forkDir * (4 + Math.random() * 10);
+            fy += segH * (0.4 + Math.random() * 0.35);
+            forkPoints.push({ x: fx, y: fy });
+          }
+          forks.push(forkPoints);
+        }
+      }
+
+      return {
+        points,
+        forks,
+        life: 0.12 + Math.random() * 0.15,  // seconds
+        maxLife: 0.12 + Math.random() * 0.15,
+        thickness: 1.2 + Math.random() * 1.5
+      };
+    }
+
+    // ── Weather Tick ──
+    function updateWeather(dt) {
+      if (weatherMode === 'none') {
+        weatherParticles = [];
+        lightningBolts = [];
+        lightningFlash = 0;
+        return;
+      }
+
+      const isRain = weatherMode === 'rain' || weatherMode === 'storm';
+      const isSnow = weatherMode === 'snow';
+      const isLightning = weatherMode === 'lightning' || weatherMode === 'storm';
+
+      // ── Spawn particles ──
+      if (isRain) {
+        const targetCount = Math.floor(30 * weatherIntensity);
+        const rainCount = weatherParticles.filter(p => p.type === 'rain').length;
+        for (let i = rainCount; i < targetCount; i++) {
+          weatherParticles.push(spawnRainDrop());
+        }
+      }
+      if (isSnow) {
+        const targetCount = Math.floor(25 * weatherIntensity);
+        const snowCount = weatherParticles.filter(p => p.type === 'snow').length;
+        for (let i = snowCount; i < targetCount; i++) {
+          weatherParticles.push(spawnSnowflake());
+        }
+      }
+
+      // ── Update particles ──
+      for (let i = weatherParticles.length - 1; i >= 0; i--) {
+        const p = weatherParticles[i];
+
+        if (p.type === 'rain') {
+          p.x += p.vx * dt * 60;
+          p.y += p.vy * dt * 60;
+          // Off-screen → respawn
+          if (p.y > weatherCanvas.height + 10 || p.x > weatherCanvas.width + 20) {
+            weatherParticles[i] = spawnRainDrop();
+          }
+        }
+
+        if (p.type === 'snow') {
+          p.wobble += p.wobbleSpeed * dt;
+          p.x += (p.vx + Math.sin(p.wobble) * p.wobbleAmp) * dt * 60;
+          p.y += p.vy * dt * 60;
+          p.rotation += p.rotSpeed;
+          if (p.y > weatherCanvas.height + 10) {
+            weatherParticles[i] = spawnSnowflake();
+          }
+        }
+      }
+
+      // ── Lightning ──
+      if (isLightning) {
+        lightningTimer -= dt;
+        if (lightningTimer <= 0) {
+          // New bolt!
+          lightningBolts.push(generateLightningBolt());
+          lightningFlash = 0.7 + Math.random() * 0.3;
+          lightningTimer = 1.5 + Math.random() * 4.0 / Math.max(0.1, weatherIntensity);
+        }
+      }
+
+      // Update existing bolts
+      for (let i = lightningBolts.length - 1; i >= 0; i--) {
+        lightningBolts[i].life -= dt;
+        if (lightningBolts[i].life <= 0) {
+          lightningBolts.splice(i, 1);
+        }
+      }
+
+      // Decay flash
+      if (lightningFlash > 0) {
+        lightningFlash -= dt * 4;
+        if (lightningFlash < 0) lightningFlash = 0;
+      }
+    }
+
+    // ── Draw Weather ──
+    function drawWeather() {
+      wCtx.clearRect(0, 0, weatherCanvas.width, weatherCanvas.height);
+
+      if (weatherMode === 'none') return;
+
+      // ── Lightning flash (ambient glow behind everything) ──
+      if (lightningFlash > 0) {
+        wCtx.fillStyle = `rgba(220, 180, 255, ${lightningFlash * 0.25})`;
+        wCtx.fillRect(0, 0, weatherCanvas.width, weatherCanvas.height);
+      }
+
+      // ── Draw rain ──
+      for (const p of weatherParticles) {
+        if (p.type === 'rain') {
+          wCtx.save();
+          wCtx.strokeStyle = `rgba(0, 255, 255, ${p.alpha})`;
+          wCtx.lineWidth = p.width;
+          wCtx.lineCap = 'round';
+          // Glow layer
+          wCtx.shadowColor = '#00FFFF';
+          wCtx.shadowBlur = 3;
+          wCtx.beginPath();
+          wCtx.moveTo(p.x, p.y);
+          wCtx.lineTo(p.x + p.vx * 0.5, p.y + p.length);
+          wCtx.stroke();
+          wCtx.restore();
+        }
+      }
+
+      // ── Draw snow ──
+      for (const p of weatherParticles) {
+        if (p.type === 'snow') {
+          wCtx.save();
+          wCtx.translate(p.x, p.y);
+          wCtx.rotate(p.rotation);
+
+          const r = p.size;
+
+          // 1px black outline (so flakes don't vanish into white beard)
+          wCtx.strokeStyle = `rgba(0, 0, 0, ${p.alpha * 0.6})`;
+          wCtx.lineWidth = 1.2;
+
+          // Draw a 6-pointed crystalline snowflake
+          for (let arm = 0; arm < 6; arm++) {
+            const angle = (arm / 6) * Math.PI * 2;
+            const ex = Math.cos(angle) * r;
+            const ey = Math.sin(angle) * r;
+            // Outline
+            wCtx.beginPath();
+            wCtx.moveTo(0, 0);
+            wCtx.lineTo(ex, ey);
+            wCtx.stroke();
+          }
+
+          // Blue-tinted white fill on top
+          wCtx.strokeStyle = `rgba(210, 230, 255, ${p.alpha})`;
+          wCtx.lineWidth = 0.7;
+          wCtx.shadowColor = '#D2E6FF';
+          wCtx.shadowBlur = 2;
+
+          for (let arm = 0; arm < 6; arm++) {
+            const angle = (arm / 6) * Math.PI * 2;
+            const ex = Math.cos(angle) * r;
+            const ey = Math.sin(angle) * r;
+            wCtx.beginPath();
+            wCtx.moveTo(0, 0);
+            wCtx.lineTo(ex, ey);
+            wCtx.stroke();
+
+            // Tiny branch detail on larger flakes
+            if (r > 2.5) {
+              const branchLen = r * 0.35;
+              const mid = 0.6;
+              const mx = Math.cos(angle) * r * mid;
+              const my = Math.sin(angle) * r * mid;
+              for (const side of [-1, 1]) {
+                const bAngle = angle + side * 0.5;
+                wCtx.beginPath();
+                wCtx.moveTo(mx, my);
+                wCtx.lineTo(mx + Math.cos(bAngle) * branchLen, my + Math.sin(bAngle) * branchLen);
+                wCtx.stroke();
+              }
+            }
+          }
+
+          // Center dot
+          wCtx.fillStyle = `rgba(210, 230, 255, ${p.alpha * 0.9})`;
+          wCtx.beginPath();
+          wCtx.arc(0, 0, 0.5, 0, Math.PI * 2);
+          wCtx.fill();
+
+          wCtx.restore();
+        }
+      }
+
+      // ── Draw lightning bolts ──
+      for (const bolt of lightningBolts) {
+        const lifeRatio = bolt.life / bolt.maxLife;
+        const alpha = lifeRatio;
+
+        // Draw main bolt — Neon Magenta
+        drawBoltPath(bolt.points, bolt.thickness, alpha);
+
+        // Draw forks (thinner)
+        for (const fork of bolt.forks) {
+          drawBoltPath(fork, bolt.thickness * 0.5, alpha * 0.7);
+        }
+      }
+    }
+
+    function drawBoltPath(points, thickness, alpha) {
+      if (points.length < 2) return;
+
+      // Outer glow
+      wCtx.save();
+      wCtx.strokeStyle = `rgba(255, 0, 255, ${alpha * 0.4})`;
+      wCtx.lineWidth = thickness * 4;
+      wCtx.lineCap = 'round';
+      wCtx.lineJoin = 'round';
+      wCtx.shadowColor = '#FF00FF';
+      wCtx.shadowBlur = 12;
+      wCtx.beginPath();
+      wCtx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        wCtx.lineTo(points[i].x, points[i].y);
+      }
+      wCtx.stroke();
+      wCtx.restore();
+
+      // Inner core — hot white-magenta
+      wCtx.save();
+      wCtx.strokeStyle = `rgba(255, 200, 255, ${alpha * 0.9})`;
+      wCtx.lineWidth = thickness;
+      wCtx.lineCap = 'round';
+      wCtx.lineJoin = 'round';
+      wCtx.shadowColor = '#FFC8FF';
+      wCtx.shadowBlur = 4;
+      wCtx.beginPath();
+      wCtx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        wCtx.lineTo(points[i].x, points[i].y);
+      }
+      wCtx.stroke();
+      wCtx.restore();
+    }
+
+    // ── Set weather from outside ──
+    function setWeather(mode, intensity) {
+      weatherMode = mode || 'none';
+      if (typeof intensity === 'number') weatherIntensity = Math.max(0, Math.min(1, intensity));
+      // Reset particles when changing mode
+      weatherParticles = [];
+      lightningBolts = [];
+      lightningFlash = 0;
+      lightningTimer = 0.5 + Math.random() * 2;
+
+      // Sync weather canvas size to sprite canvas
+      weatherCanvas.width = canvas.width;
+      weatherCanvas.height = canvas.height;
+      console.log(`Weather: ${weatherMode} @ ${(weatherIntensity * 100).toFixed(0)}%`);
+    }
+
     // ── Scale Management ──
     const BASE_W = 90;
     const BASE_H = 100;
@@ -218,6 +581,9 @@
       const h = Math.round(BASE_H * wizardScale);
       canvas.width = w;
       canvas.height = h;
+      // Keep weather overlay in sync
+      weatherCanvas.width = w;
+      weatherCanvas.height = h;
       // Tell main process to resize the BrowserWindow
       wizard.resizeBuddy(wizardScale);
     }
@@ -302,10 +668,11 @@
 
       const lidDrop = canvas.height * (0.003 + blinkAmount * 0.02);
       const eyeWidth = canvas.width * 0.05;
-      const eyeGap = canvas.width * 0.115;
-      const eyeY = canvas.height * 0.245 + hoverOffsetY * 0.08;
-      const leftCenterX = canvas.width * 0.5 - eyeGap * 0.5;
-      const rightCenterX = canvas.width * 0.5 + eyeGap * 0.5;
+      const eyeGap = canvas.width * 0.10;
+      const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
+      const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
+      const leftCenterX = eyeCenterX - eyeGap * 0.5;
+      const rightCenterX = eyeCenterX + eyeGap * 0.5;
       const arcLift = canvas.height * 0.008;
 
       ctx.save();
@@ -325,6 +692,89 @@
           ctx.quadraticCurveTo(centerX, eyeY + lidDrop * 0.8, centerX + eyeWidth * 0.5, eyeY + lidDrop * 0.42);
           ctx.stroke();
         }
+      }
+
+      ctx.restore();
+    }
+
+    // ── Cursor Tracking (Eye-Following) ──
+    // Polls global cursor position every 100ms and computes
+    // a normalised gaze direction for the wizard's pupils.
+    function startCursorTracking() {
+      setInterval(async () => {
+        try {
+          const pos = await wizard.getCursorPos();
+          if (!pos) return;
+
+          const dx = pos.cursorX - pos.wizX;
+          const dy = pos.cursorY - pos.wizY;
+          cursorDistance = Math.sqrt(dx * dx + dy * dy);
+
+          // Normalize to -1…+1 with a soft clamp
+          // 300px away = full gaze, closer = proportional
+          const maxDist = 300;
+          const norm = Math.min(cursorDistance / maxDist, 1);
+          const angle = Math.atan2(dy, dx);
+
+          gazeX = Math.cos(angle) * norm;
+          gazeY = Math.sin(angle) * norm;
+        } catch (e) {
+          // Silently ignore — window might be closing
+        }
+      }, 100);
+    }
+
+    // Smooth the gaze each frame for natural eye movement
+    function updateGaze(dt) {
+      const lerpSpeed = 8; // higher = snappier
+      const t = 1 - Math.exp(-lerpSpeed * dt);
+      gazeSmoothedX += (gazeX - gazeSmoothedX) * t;
+      gazeSmoothedY += (gazeY - gazeSmoothedY) * t;
+    }
+
+    // Draw dynamic pupil dots that follow the cursor.
+    // These sit OVER the sprite's painted eyes.
+    function drawGazePupils() {
+      // Don't draw pupils while sleeping or blinking hard
+      if (currentState === 'sleeping') return;
+      if (blinkAmount > 0.7) return;
+
+      // Eye geometry — matches drawBlinkOverlay positions
+      const eyeGap = canvas.width * 0.10;
+      const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
+      const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
+      const leftCenterX = eyeCenterX - eyeGap * 0.5;
+      const rightCenterX = eyeCenterX + eyeGap * 0.5;
+
+      // How far the pupil can shift (in pixels)
+      const maxShiftX = canvas.width * 0.018;
+      const maxShiftY = canvas.height * 0.012;
+
+      // Pupil size (relative to canvas)
+      const pupilRadius = Math.max(1, canvas.width * 0.012);
+
+      ctx.save();
+
+      for (const centerX of [leftCenterX, rightCenterX]) {
+        const px = centerX + gazeSmoothedX * maxShiftX;
+        const py = eyeY + gazeSmoothedY * maxShiftY;
+
+        // Tiny dark pupil dot
+        ctx.fillStyle = 'rgba(15, 5, 30, 0.85)';
+        ctx.beginPath();
+        ctx.arc(px, py, pupilRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Even tinier specular highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.beginPath();
+        ctx.arc(
+          px - pupilRadius * 0.3,
+          py - pupilRadius * 0.3,
+          pupilRadius * 0.35,
+          0, Math.PI * 2
+        );
+        ctx.fill();
       }
 
       ctx.restore();
@@ -627,6 +1077,11 @@
         processSheet(spriteSheet);
         const cfg = await wizard.getConfig();
         await applyScale(cfg.wizardScale);
+        // Restore saved weather state
+        if (cfg.weatherMode && cfg.weatherMode !== 'none') {
+          setWeather(cfg.weatherMode, cfg.weatherIntensity);
+        }
+        startCursorTracking();
         requestAnimationFrame(animate);
       };
 
@@ -658,6 +1113,7 @@
       const fps = stateConfig.fps || 1;
 
       updateMicroMotion(timestamp, Math.max(0, dt || 0));
+      updateGaze(Math.max(0, dt || 0));
 
       animTick += dt;
 
@@ -675,16 +1131,20 @@
 
         if (frameCanvas) {
           ctx.save();
+          // Subtle body lean toward cursor (max ~1.5px shift, 0.5° tilt)
+          const leanX = gazeSmoothedX * canvas.width * 0.008;
+          const leanTilt = gazeSmoothedX * 0.009;
           ctx.translate(
-            canvas.width / 2 + driftOffsetX,
+            canvas.width / 2 + driftOffsetX + leanX,
             canvas.height / 2 + breathOffset + hoverOffsetY
           );
-          ctx.rotate(tiltRadians);
+          ctx.rotate(tiltRadians + leanTilt);
           ctx.scale(squashX, squashY);
           // Draw the frame, fitting into our display canvas
           ctx.drawImage(frameCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
           ctx.restore();
           drawBlinkOverlay();
+          drawGazePupils();
         } else {
           drawPlaceholder();
         }
@@ -700,6 +1160,11 @@
           spawnZBubble();
         }
       }
+
+      // ── Weather overlay ──
+      const safeDt = Math.max(0, Math.min(dt || 0, 0.1));
+      updateWeather(safeDt);
+      drawWeather();
 
       requestAnimationFrame(animate);
     }
@@ -837,7 +1302,18 @@
       if (cfg.wizardScale && cfg.wizardScale !== wizardScale) {
         await applyScale(cfg.wizardScale);
       }
+      // Apply weather config if present
+      if (cfg.weatherMode !== undefined) {
+        setWeather(cfg.weatherMode, cfg.weatherIntensity);
+      }
     });
+
+    // Listen for weather commands from main
+    if (wizard.onWeatherChange) {
+      wizard.onWeatherChange((data) => {
+        setWeather(data.mode, data.intensity);
+      });
+    }
 
     // Initial greeting
     setTimeout(() => {
