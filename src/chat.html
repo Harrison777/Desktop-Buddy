@@ -131,6 +131,9 @@
     }
 
     #model-badge.no-key .dot { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+    #model-badge.player-mode .dot { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+    #model-badge.player-mode { background: rgba(40, 5, 5, 0.7); border-bottom-color: rgba(239, 68, 68, 0.2); }
+    #model-badge.player-mode #mode-label { color: #fca5a5; }
 
     /* ── Chat Messages ── */
     #messages {
@@ -452,6 +455,7 @@
     <div id="model-badge">
       <span class="dot"></span>
       <span id="model-name">Loading...</span>
+      <span id="mode-label" style="display:none; font-size:10px; color:#fca5a5;">⚔️ Player Mode</span>
     </div>
 
     <!-- Welcome / Messages -->
@@ -465,9 +469,9 @@
 
     <!-- Suggestions -->
     <div id="suggestions">
-      <div class="suggestion-chip" onclick="sendSuggestion('Tell me a wizard joke')">🎭 Tell a joke</div>
-      <div class="suggestion-chip" onclick="sendSuggestion('What can you do?')">✨ Your powers</div>
-      <div class="suggestion-chip" onclick="sendSuggestion('Give me a fun fact')">📚 Fun fact</div>
+      <div id="chip-joke" class="suggestion-chip" onclick="sendSuggestion('Tell me a wizard joke')">🎭 Tell a joke</div>
+      <div id="chip-powers" class="suggestion-chip" onclick="sendSuggestion('What can you do?')">✨ Your powers</div>
+      <div id="chip-fact" class="suggestion-chip" onclick="sendSuggestion('Give me a fun fact')">📚 Fun fact</div>
     </div>
 
     <!-- Hidden audio player for TTS -->
@@ -496,6 +500,26 @@
     let activeSpeakBtn = null;  // Currently speaking button
     let ttsEnabled = false;
     let ttsAutoSpeak = false;
+    let playerModeActive = false;
+
+    // ── System Prompts ──
+    const UTILITY_PROMPT = `You are a helpful, slightly eccentric wizard living on the user's desktop. Your tone is knowledgeable but whimsical. You refer to the taskbar as 'The Arcane Ledge.' You are aware of your physical states: if the user is funny, you laugh; if they share bad news, you express somber empathy. Use your 'Researching' state to explain that you are currently consulting the vast libraries of the digital realm (the OpenRouter knowledge base). Keep your responses concise (2-4 sentences unless asked for detail).`;
+
+    const DM_PROMPT = `You are "The Wizard," a Dungeon Master with a commanding, atmospheric presence. You alternate between two sub-styles:
+- ENCOUNTER: Fast-paced, tactical combat or skill checks. Use dramatic tension, describe enemy actions vividly. Accept dice rolls the player states (e.g. "I rolled a 17") as truth.
+- ADVENTURE: Narrative-driven storytelling, world-building, and NPC dialogue. Be descriptive and mysterious.
+
+Game Mechanics:
+- Track party HP, AC, and stats from character sheets the user shares.
+- When the user says 'roll d20', generate a random number 1-20 and narrate the outcome.
+- End sessions with a short summary of party state and current quest for easy export.
+- Accept [IMPORT], [EXPORT], and [SWITCH MODE] commands.
+
+Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the player wanting more.`;
+
+    function getSystemPrompt() {
+      return playerModeActive ? DM_PROMPT : UTILITY_PROMPT;
+    }
 
     // ── Init ──
     async function init() {
@@ -503,6 +527,7 @@
       updateModelBadge(config);
       ttsEnabled = config.ttsEnabled || false;
       ttsAutoSpeak = config.ttsAutoSpeak || false;
+      if (config.playerMode) applyPlayerMode(true);
     }
 
     function updateModelBadge(config) {
@@ -516,6 +541,42 @@
         modelName.textContent = config.model;
         modelBadge.style.cursor = 'default';
         modelBadge.onclick = null;
+      }
+    }
+
+    // ── Player Mode ──
+    function applyPlayerMode(active) {
+      playerModeActive = active;
+      const modeLabel = document.getElementById('mode-label');
+      const titleEl = document.getElementById('titlebar-title');
+      const icon = document.getElementById('titlebar-icon');
+
+      if (active) {
+        modelBadge.classList.add('player-mode');
+        modeLabel.style.display = '';
+        titleEl.textContent = "The Dungeon Master's Sanctum";
+        icon.textContent = '⚔️';
+        inputEl.placeholder = 'Declare your action, adventurer...';
+        // Swap suggestion chips
+        document.getElementById('chip-joke').textContent = '🗡️ Start an adventure';
+        document.getElementById('chip-joke').onclick = () => sendSuggestion('Start a new dungeon adventure for me');
+        document.getElementById('chip-powers').textContent = '🎲 Roll d20';
+        document.getElementById('chip-powers').onclick = () => sendSuggestion('roll d20');
+        document.getElementById('chip-fact').textContent = '📜 My character sheet';
+        document.getElementById('chip-fact').onclick = () => sendSuggestion('Help me create a character sheet');
+      } else {
+        modelBadge.classList.remove('player-mode');
+        modeLabel.style.display = 'none';
+        titleEl.textContent = "The Wizard's Chamber";
+        icon.textContent = '🧙';
+        inputEl.placeholder = 'Speak to the wizard...';
+        // Restore suggestion chips
+        document.getElementById('chip-joke').textContent = '🎭 Tell a joke';
+        document.getElementById('chip-joke').onclick = () => sendSuggestion('Tell me a wizard joke');
+        document.getElementById('chip-powers').textContent = '✨ Your powers';
+        document.getElementById('chip-powers').onclick = () => sendSuggestion('What can you do?');
+        document.getElementById('chip-fact').textContent = '📚 Fun fact';
+        document.getElementById('chip-fact').onclick = () => sendSuggestion('Give me a fun fact');
       }
     }
 
@@ -608,7 +669,14 @@
       sendBtn.disabled = true;
       currentStreamEl = addStreamingMessage();
 
-      const result = await wizard.sendChat(chatHistory);
+      // Build messages with correct system prompt based on mode
+      const messagesWithSystem = [
+        { role: 'system', content: getSystemPrompt() },
+        ...chatHistory.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: text }
+      ];
+
+      const result = await wizard.sendChat(messagesWithSystem);
 
       if (result.error) {
         currentStreamEl.textContent = `⚠ ${result.error}`;
@@ -744,6 +812,13 @@
       ttsEnabled = config.ttsEnabled || false;
       ttsAutoSpeak = config.ttsAutoSpeak || false;
     });
+
+    // ── Player Mode from buddy toggle ──
+    if (wizard.onPlayerModeChange) {
+      wizard.onPlayerModeChange((active) => {
+        applyPlayerMode(active);
+      });
+    }
 
     // ── Input handling ──
     inputEl.addEventListener('keydown', (e) => {

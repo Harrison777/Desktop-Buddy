@@ -140,6 +140,49 @@
       letter-spacing: 1.5px;
       pointer-events: none;
     }
+
+    /* ── Player Mode Toggle ── */
+    #mode-toggle {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(168, 85, 247, 0.5);
+      background: rgba(20, 10, 40, 0.85);
+      color: #c084fc;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      box-shadow: 0 0 6px rgba(168, 85, 247, 0.2);
+      opacity: 0.6;
+      z-index: 20;
+      line-height: 1;
+    }
+
+    #mode-toggle:hover {
+      opacity: 1;
+      transform: scale(1.15);
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+    }
+
+    #mode-toggle.player-active {
+      border-color: #ef4444;
+      background: rgba(40, 5, 5, 0.9);
+      color: #fca5a5;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+      opacity: 1;
+      animation: combatPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes combatPulse {
+      0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+      50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.7), 0 0 4px rgba(239, 68, 68, 0.3); }
+    }
   </style>
 </head>
 <body>
@@ -149,6 +192,7 @@
     <canvas id="weather-canvas" width="180" height="200"></canvas>
     <div id="glow-ring"></div>
     <div id="state-label" style="display:none;"></div>
+    <button id="mode-toggle" title="Toggle Player Mode">🎲</button>
   </div>
 
   <script>
@@ -1311,6 +1355,45 @@
     if (wizard.onWeatherChange) {
       wizard.onWeatherChange((data) => {
         setWeather(data.mode, data.intensity);
+      });
+    }
+
+    // ── Player Mode Toggle ──
+    let playerModeActive = false;
+    const modeToggleBtn = document.getElementById('mode-toggle');
+
+    modeToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      playerModeActive = !playerModeActive;
+
+      if (playerModeActive) {
+        modeToggleBtn.classList.add('player-active');
+        modeToggleBtn.textContent = '⚔️';
+        modeToggleBtn.title = 'Player Mode ON — click to return to Utility Mode';
+        showSpeechBubble('⚔️ The Dungeon Master awakens...', 3000);
+        setState('researching');
+      } else {
+        modeToggleBtn.classList.remove('player-active');
+        modeToggleBtn.textContent = '🎲';
+        modeToggleBtn.title = 'Toggle Player Mode';
+        showSpeechBubble('🧙 Returning to Utility Mode...', 2500);
+        setState('idle');
+      }
+
+      wizard.setPlayerMode(playerModeActive);
+    });
+
+    // Sync toggle state if main process reports a mode change
+    if (wizard.onPlayerModeChange) {
+      wizard.onPlayerModeChange((active) => {
+        playerModeActive = active;
+        if (active) {
+          modeToggleBtn.classList.add('player-active');
+          modeToggleBtn.textContent = '⚔️';
+        } else {
+          modeToggleBtn.classList.remove('player-active');
+          modeToggleBtn.textContent = '🎲';
+        }
       });
     }
 

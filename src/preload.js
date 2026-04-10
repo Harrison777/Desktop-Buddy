@@ -38,4 +38,8 @@ contextBridge.exposeInMainWorld('wizard', {
 
   // Cursor tracking for eye-following
   getCursorPos: () => ipcRenderer.invoke('get-cursor-pos'),
+
+  // Player / DM Mode toggle
+  setPlayerMode: (active) => ipcRenderer.send('set-player-mode', active),
+  onPlayerModeChange: (cb) => ipcRenderer.on('player-mode-change', (_, active) => cb(active)),
 });

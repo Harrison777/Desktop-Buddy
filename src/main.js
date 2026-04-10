@@ -32,7 +32,9 @@ const DEFAULT_CONFIG = {
   weatherIntensity: 0.6,         // 0.0 - 1.0
   weatherAutoSync: true,         // Auto-sync with real local weather
   weatherLat: null,              // Manual latitude override (null = auto-detect)
-  weatherLon: null               // Manual longitude override (null = auto-detect)
+  weatherLon: null,              // Manual longitude override (null = auto-detect)
+  // Mode
+  playerMode: false             // true = DM / Player Mode active
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -532,12 +534,15 @@ function setupIPC() {
 
     const systemPrompt = `You are a helpful, slightly eccentric wizard living on the user's desktop. Your tone is knowledgeable but whimsical. You refer to the taskbar as 'The Arcane Ledge.' You are aware of your physical states: if the user is funny, you laugh; if they share bad news, you express somber empathy. Use your 'Researching' state to explain that you are currently consulting the vast libraries of the digital realm (the OpenRouter knowledge base). Keep your responses concise (2-4 sentences unless asked for detail).`;
 
+    // Respect a system prompt injected by the renderer (e.g., Player/DM mode).
+    // If the first message is already a system role, use it; otherwise prepend the default.
+    const hasSystemMsg = messages.length > 0 && messages[0].role === 'system';
+
     const body = {
       model: config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ],
+      messages: hasSystemMsg
+        ? messages
+        : [{ role: 'system', content: systemPrompt }, ...messages],
       stream: true
     };
 
@@ -764,6 +769,19 @@ function setupIPC() {
         mode: config.weatherMode,
         intensity: config.weatherIntensity
       });
+    }
+  });
+
+  // ── Player / DM Mode toggle ──
+  ipcMain.on('set-player-mode', (_, active) => {
+    config.playerMode = !!active;
+    saveConfig();
+    // Broadcast to all relevant windows
+    if (chatWindow && !chatWindow.isDestroyed()) {
+      chatWindow.webContents.send('player-mode-change', config.playerMode);
+    }
+    if (buddyWindow && !buddyWindow.isDestroyed()) {
+      buddyWindow.webContents.send('player-mode-change', config.playerMode);
     }
   });
 }
