@@ -135,6 +135,91 @@
     #model-badge.player-mode { background: rgba(40, 5, 5, 0.7); border-bottom-color: rgba(239, 68, 68, 0.2); }
     #model-badge.player-mode #mode-label { color: #fca5a5; }
 
+    /* ── Sub-mode badge ── */
+    #submode-badge {
+      display: none;
+      position: absolute;
+      top: 6px;
+      right: 52px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 3px 8px;
+      border-radius: 99px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      text-transform: uppercase;
+      cursor: default;
+      transition: all 0.3s;
+    }
+    #submode-badge.encounter { background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.6); color: #fecaca; }
+    #submode-badge.adventure { background: rgba(139, 92, 246, 0.2); border-color: rgba(139, 92, 246, 0.4); color: #c4b5fd; }
+
+    /* ── Dice roll card ── */
+    .dice-card {
+      align-self: center;
+      background: linear-gradient(135deg, rgba(30,10,60,0.9), rgba(60,5,30,0.9));
+      border: 1px solid rgba(239,68,68,0.4);
+      border-radius: 12px;
+      padding: 12px 20px;
+      text-align: center;
+      animation: diceAppear 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      min-width: 140px;
+    }
+    @keyframes diceAppear {
+      from { opacity: 0; transform: scale(0.5) rotate(-10deg); }
+      to   { opacity: 1; transform: scale(1)   rotate(0deg); }
+    }
+    .dice-card .die-icon { font-size: 28px; line-height: 1; }
+    .dice-card .die-total {
+      font-size: 36px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.1;
+      text-shadow: 0 0 16px rgba(239,68,68,0.8);
+    }
+    .dice-card.crit-success .die-total { color: #ffd700; text-shadow: 0 0 20px rgba(255,215,0,0.9); }
+    .dice-card.crit-fail    .die-total { color: #ef4444; }
+    .dice-card .die-label { font-size: 11px; color: #a78bfa; letter-spacing: 0.06em; margin-top: 2px; }
+    .dice-card .die-outcome { font-size: 10px; color: #fca5a5; margin-top: 4px; font-style: italic; }
+
+    /* ── Toast notification ── */
+    #toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(20, 20, 40, 0.95);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 13px;
+      color: #e9d5ff;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s ease;
+      z-index: 1000;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+
+    /* ── New Session button (DM mode only) ── */
+    #new-session-btn {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 11px;
+      cursor: pointer;
+      margin: 0 8px 8px;
+      transition: all 0.2s;
+      align-self: flex-start;
+    }
+    #new-session-btn:hover { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.5); }
+
     /* ── Chat Messages ── */
     #messages {
       flex: 1;
@@ -445,6 +530,7 @@
         <div id="titlebar-icon">🧙</div>
         <span id="titlebar-title">The Wizard's Chamber</span>
       </div>
+      <span id="submode-badge">Adventure</span>
       <div class="titlebar-buttons">
         <button class="tb-btn minimize" onclick="wizard.minimizeChat()"></button>
         <button class="tb-btn close" onclick="wizard.closeChat()"></button>
@@ -474,6 +560,12 @@
       <div id="chip-fact" class="suggestion-chip" onclick="sendSuggestion('Give me a fun fact')">📚 Fun fact</div>
     </div>
 
+    <!-- New Session button (DM mode) -->
+    <button id="new-session-btn" onclick="newSession()">🗡️ New Session</button>
+
+    <!-- Toast notification -->
+    <div id="toast"></div>
+
     <!-- Hidden audio player for TTS -->
     <audio id="tts-audio" style="display: none;"></audio>
 
@@ -501,6 +593,21 @@
     let ttsEnabled = false;
     let ttsAutoSpeak = false;
     let playerModeActive = false;
+    let currentSubMode = 'ADVENTURE';
+
+    const submodeBadge = document.getElementById('submode-badge');
+    const newSessionBtn = document.getElementById('new-session-btn');
+    const toastEl = document.getElementById('toast');
+    let toastTimer = null;
+
+    function showToast(msg, duration = 4000) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.classList.remove('show');
+      }, duration);
+    }
 
     // ── System Prompts ──
     const UTILITY_PROMPT = `You are a helpful, slightly eccentric wizard living on the user's desktop. Your tone is knowledgeable but whimsical. You refer to the taskbar as 'The Arcane Ledge.' You are aware of your physical states: if the user is funny, you laugh; if they share bad news, you express somber empathy. Use your 'Researching' state to explain that you are currently consulting the vast libraries of the digital realm (the OpenRouter knowledge base). Keep your responses concise (2-4 sentences unless asked for detail).`;
@@ -557,6 +664,9 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
         titleEl.textContent = "The Dungeon Master's Sanctum";
         icon.textContent = '⚔️';
         inputEl.placeholder = 'Declare your action, adventurer...';
+        submodeBadge.style.display = '';
+        newSessionBtn.style.display = '';
+        updateSubmodeBadge(currentSubMode);
         // Swap suggestion chips
         document.getElementById('chip-joke').textContent = '🗡️ Start an adventure';
         document.getElementById('chip-joke').onclick = () => sendSuggestion('Start a new dungeon adventure for me');
@@ -570,6 +680,8 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
         titleEl.textContent = "The Wizard's Chamber";
         icon.textContent = '🧙';
         inputEl.placeholder = 'Speak to the wizard...';
+        submodeBadge.style.display = 'none';
+        newSessionBtn.style.display = 'none';
         // Restore suggestion chips
         document.getElementById('chip-joke').textContent = '🎭 Tell a joke';
         document.getElementById('chip-joke').onclick = () => sendSuggestion('Tell me a wizard joke');
@@ -578,6 +690,53 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
         document.getElementById('chip-fact').textContent = '📚 Fun fact';
         document.getElementById('chip-fact').onclick = () => sendSuggestion('Give me a fun fact');
       }
+    }
+
+    function updateSubmodeBadge(mode) {
+      currentSubMode = mode;
+      submodeBadge.textContent = mode === 'ENCOUNTER' ? '⚔️ Encounter' : '🗺️ Adventure';
+      submodeBadge.className = mode === 'ENCOUNTER' ? 'encounter' : 'adventure';
+    }
+
+    // Dice roll card
+    function insertDiceCard(result) {
+      const { sides, total, rolls } = result;
+      const isCrit    = sides === 20 && total === 20;
+      const isCritFail= sides === 20 && total === 1;
+      let outcomeText = '';
+      if (isCrit)     outcomeText = '✨ Natural 20 — Critical Success!';
+      else if (isCritFail) outcomeText = '💀 Natural 1 — Critical Failure!';
+      else if (sides === 20) {
+        if (total >= 15)     outcomeText = 'Strong success';
+        else if (total >= 10) outcomeText = 'Partial success';
+        else                  outcomeText = 'Failure';
+      }
+
+      const card = document.createElement('div');
+      card.className = 'dice-card' + (isCrit ? ' crit-success' : isCritFail ? ' crit-fail' : '');
+      card.innerHTML = `
+        <div class="die-icon">🎲</div>
+        <div class="die-total">${total}</div>
+        <div class="die-label">d${sides}${rolls.length > 1 ? ' · [' + rolls.join(', ') + ']' : ''}</div>
+        ${outcomeText ? `<div class="die-outcome">${outcomeText}</div>` : ''}
+      `;
+
+      const messagesEl = document.getElementById('messages');
+      if (welcomeEl.style.display !== 'none') {
+        welcomeEl.style.display = 'none';
+        messagesEl.style.display = 'flex';
+      }
+      messagesEl.appendChild(card);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function newSession() {
+      if (!confirm('Start a new session? This will clear the current chat history.')) return;
+      chatHistory = [];
+      document.getElementById('messages').innerHTML = '';
+      welcomeEl.style.display = '';
+      document.getElementById('messages').style.display = 'none';
+      wizard.resetGameState();
     }
 
     // ── Messages ──
@@ -817,6 +976,40 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
     if (wizard.onPlayerModeChange) {
       wizard.onPlayerModeChange((active) => {
         applyPlayerMode(active);
+      });
+    }
+
+    // ── Dice roll from main process ──
+    if (wizard.onDiceRolled) {
+      wizard.onDiceRolled((result) => {
+        insertDiceCard(result);
+      });
+    }
+
+    // ── Sub-mode change ──
+    if (wizard.onSubmodeChange) {
+      wizard.onSubmodeChange((mode) => {
+        updateSubmodeBadge(mode);
+        showToast(`Mode switched to ${mode === 'ENCOUNTER' ? '⚔️ Encounter' : '🗺️ Adventure'}`);
+      });
+    }
+
+    // ── Chronicle export notification ──
+    if (wizard.onChronicleExport) {
+      wizard.onChronicleExport((filePath) => {
+        showToast(`📜 Chronicle saved to Desktop! (click to reveal)`, 6000);
+        toastEl.style.cursor = 'pointer';
+        toastEl.onclick = () => {
+          wizard.openPath(filePath);
+          toastEl.classList.remove('show');
+        };
+      });
+    }
+
+    // ── Game state reset ──
+    if (wizard.onGameStateReset) {
+      wizard.onGameStateReset(() => {
+        showToast('🗡️ New session started!');
       });
     }
 

@@ -42,4 +42,18 @@ contextBridge.exposeInMainWorld('wizard', {
   // Player / DM Mode toggle
   setPlayerMode: (active) => ipcRenderer.send('set-player-mode', active),
   onPlayerModeChange: (cb) => ipcRenderer.on('player-mode-change', (_, active) => cb(active)),
+
+  // Game State
+  getGameState:   () => ipcRenderer.invoke('get-game-state'),
+  resetGameState: () => ipcRenderer.send('reset-game-state'),
+  rollDice:       (sides) => ipcRenderer.invoke('roll-dice', sides),
+
+  // Game events from main process
+  onDiceRolled:     (cb) => ipcRenderer.on('dice-rolled',     (_, r)    => cb(r)),
+  onChronicleExport:(cb) => ipcRenderer.on('chronicle-export',(_, path) => cb(path)),
+  onSubmodeChange:  (cb) => ipcRenderer.on('submode-change',  (_, mode) => cb(mode)),
+  onGameStateReset: (cb) => ipcRenderer.on('game-state-reset',()        => cb()),
+
+  // Shell utilities
+  openPath: (filePath) => ipcRenderer.send('open-path', filePath),
 });
