@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Desktop Wizard — Arcane Companion</title>
-  <meta name="description" content="An interactive wizard companion that follows your cursor, reacts to weather, and chats with AI-powered wisdom.">
+  <meta name="description" content="An interactive wizard companion for tabletop RPG sessions. Roll dice, manage character sheets, and chat with AI-powered arcane wisdom.">
   <link rel="icon" href="assets/wizard_hat_icon.png" type="image/png">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -13,61 +13,297 @@
   <div class="ambient-particles"></div>
 
   <div class="app-wrapper">
-    <!-- ═══ Left Panel: Controls ═══ -->
-    <div class="panel controls-panel">
-      <div class="panel-title">⚙️ Arcane Controls</div>
+    <!-- ═══ Left Panel: RPG Toolkit ═══ -->
+    <div class="panel rpg-panel">
+      <div class="panel-title">🎲 Arcane Tools</div>
 
-      <!-- State -->
-      <div class="control-group">
-        <label>Wizard State</label>
-        <select id="state-select">
-          <option value="idle">🧙 Idle</option>
-          <option value="talking">💬 Talking</option>
-          <option value="reading">📖 Reading</option>
-          <option value="sleeping">💤 Sleeping</option>
-          <option value="laughing">😄 Laughing</option>
-          <option value="sad">😔 Sad</option>
-          <option value="researching">🔮 Researching</option>
-        </select>
+      <!-- Tab Bar -->
+      <div class="rpg-tabs">
+        <button class="rpg-tab active" data-tab="dice">🎲 Dice</button>
+        <button class="rpg-tab" data-tab="sheet">📋 Sheet</button>
+        <button class="rpg-tab" data-tab="notes">📜 Notes</button>
+        <button class="rpg-tab" data-tab="adventure">🗺 Quest</button>
       </div>
 
-      <!-- Scale -->
-      <div class="control-group">
-        <label>Scale</label>
-        <input type="range" id="scale-slider" min="1" max="5" step="0.5" value="2">
-        <span class="range-value" id="scale-value">2.0x</span>
+
+      <!-- ─── TAB: Dice Roller ─── -->
+      <div class="rpg-tab-content active" id="tab-dice">
+
+        <!-- Quick modifier -->
+        <div class="dice-modifier-row">
+          <label>Modifier</label>
+          <button class="mod-btn" id="mod-minus">−</button>
+          <span id="mod-display">+0</span>
+          <button class="mod-btn" id="mod-plus">+</button>
+          <label style="margin-left:auto;">Count</label>
+          <select id="dice-count">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+
+        <!-- Dice Buttons -->
+        <div class="dice-grid">
+          <button class="die-btn" data-sides="4"  title="Roll d4">d4</button>
+          <button class="die-btn" data-sides="6"  title="Roll d6">d6</button>
+          <button class="die-btn" data-sides="8"  title="Roll d8">d8</button>
+          <button class="die-btn" data-sides="10" title="Roll d10">d10</button>
+          <button class="die-btn" data-sides="12" title="Roll d12">d12</button>
+          <button class="die-btn featured" data-sides="20" title="Roll d20">d20</button>
+          <button class="die-btn" data-sides="100" title="Roll d100">d%</button>
+        </div>
+
+        <!-- Result Display -->
+        <div class="dice-result-box" id="dice-result-box">
+          <div class="dice-result-main" id="dice-result-main">—</div>
+          <div class="dice-result-breakdown" id="dice-result-breakdown"></div>
+        </div>
+
+        <!-- Roll History -->
+        <div class="roll-history-label">Roll History</div>
+        <div class="roll-history" id="roll-history"></div>
+
+        <!-- Custom Expression -->
+        <div class="dice-custom-row">
+          <input type="text" id="dice-expr" placeholder="e.g. 2d6+3, d20-1" />
+          <button class="btn btn-sm" id="dice-expr-roll">Roll</button>
+        </div>
       </div>
 
-      <!-- Weather -->
-      <div class="control-group">
-        <label>Weather</label>
-        <select id="weather-select">
-          <option value="none">☀️ Clear</option>
-          <option value="rain">🌧️ Rain</option>
-          <option value="snow">❄️ Snow</option>
-          <option value="lightning">⚡ Lightning</option>
-          <option value="storm">🌩️ Storm</option>
-        </select>
+      <!-- ─── TAB: Character Sheet ─── -->
+      <div class="rpg-tab-content" id="tab-sheet">
+        <div class="sheet-import-row">
+          <button class="btn btn-sm" id="sheet-import-btn">📂 Import JSON</button>
+          <button class="btn btn-sm btn-danger" id="sheet-clear-btn">🗑 Clear</button>
+          <input type="file" id="sheet-file-input" accept=".json" style="display:none">
+        </div>
+
+        <!-- Sheet display (hidden until loaded) -->
+        <div id="sheet-empty" class="sheet-empty-state">
+          <div class="empty-icon">📋</div>
+          <p>No character loaded.</p>
+          <p class="hint-text">Import a D&D 5e JSON or fill manually below.</p>
+          <button class="btn btn-primary" id="sheet-manual-btn">✏️ Create Manually</button>
+        </div>
+
+        <div id="sheet-display" class="sheet-display" style="display:none">
+          <!-- Identity -->
+          <div class="sheet-identity">
+            <div class="sheet-name" id="sh-name">Unknown Hero</div>
+            <div class="sheet-meta">
+              <span id="sh-race">Race</span> ·
+              <span id="sh-class">Class</span> ·
+              <span class="sheet-level-badge" id="sh-level">Lv 1</span>
+            </div>
+          </div>
+
+          <!-- HP & AC Bar -->
+          <div class="sheet-vitals">
+            <div class="vital-block">
+              <div class="vital-label">❤️ HP</div>
+              <div class="vital-row">
+                <input type="number" class="vital-input" id="sh-hp-cur" min="0" placeholder="—">
+                <span class="vital-sep">/</span>
+                <input type="number" class="vital-input" id="sh-hp-max" min="0" placeholder="—">
+              </div>
+            </div>
+            <div class="vital-block">
+              <div class="vital-label">🛡 AC</div>
+              <input type="number" class="vital-input vital-ac" id="sh-ac" min="0" placeholder="—">
+            </div>
+            <div class="vital-block">
+              <div class="vital-label">🏃 Speed</div>
+              <span class="vital-static" id="sh-speed">—</span>
+            </div>
+          </div>
+
+          <!-- Ability Scores -->
+          <div class="ability-grid">
+            <div class="ability-block" data-ability="str">
+              <div class="ability-label">STR</div>
+              <div class="ability-score" id="sh-str">10</div>
+              <div class="ability-mod" id="sh-str-mod">+0</div>
+            </div>
+            <div class="ability-block" data-ability="dex">
+              <div class="ability-label">DEX</div>
+              <div class="ability-score" id="sh-dex">10</div>
+              <div class="ability-mod" id="sh-dex-mod">+0</div>
+            </div>
+            <div class="ability-block" data-ability="con">
+              <div class="ability-label">CON</div>
+              <div class="ability-score" id="sh-con">10</div>
+              <div class="ability-mod" id="sh-con-mod">+0</div>
+            </div>
+            <div class="ability-block" data-ability="int">
+              <div class="ability-label">INT</div>
+              <div class="ability-score" id="sh-int">10</div>
+              <div class="ability-mod" id="sh-int-mod">+0</div>
+            </div>
+            <div class="ability-block" data-ability="wis">
+              <div class="ability-label">WIS</div>
+              <div class="ability-score" id="sh-wis">10</div>
+              <div class="ability-mod" id="sh-wis-mod">+0</div>
+            </div>
+            <div class="ability-block" data-ability="cha">
+              <div class="ability-label">CHA</div>
+              <div class="ability-score" id="sh-cha">10</div>
+              <div class="ability-mod" id="sh-cha-mod">+0</div>
+            </div>
+          </div>
+
+          <!-- Proficiency & Inspiration -->
+          <div class="sheet-misc-row">
+            <div class="misc-block">
+              <div class="misc-label">Prof. Bonus</div>
+              <div class="misc-value" id="sh-prof">+2</div>
+            </div>
+            <div class="misc-block">
+              <div class="misc-label">Initiative</div>
+              <div class="misc-value" id="sh-init">+0</div>
+            </div>
+            <div class="misc-block">
+              <div class="misc-label">Inspiration</div>
+              <button class="insp-btn" id="sh-insp-btn" title="Toggle Inspiration">☆</button>
+            </div>
+          </div>
+
+          <!-- Skills (collapsed by default) -->
+          <details class="sheet-section-details">
+            <summary class="sheet-section-title">Skills</summary>
+            <div class="skills-grid" id="sh-skills-grid"></div>
+          </details>
+
+          <!-- Saving Throws -->
+          <details class="sheet-section-details">
+            <summary class="sheet-section-title">Saving Throws</summary>
+            <div class="saves-grid" id="sh-saves-grid"></div>
+          </details>
+
+          <!-- Features & Traits (scrollable list) -->
+          <details class="sheet-section-details">
+            <summary class="sheet-section-title">Features & Traits</summary>
+            <div class="features-list" id="sh-features"></div>
+          </details>
+        </div>
+
+        <!-- Manual entry form (hidden by default) -->
+        <div id="sheet-form" class="sheet-form" style="display:none">
+          <div class="form-row">
+            <input type="text" class="form-input" id="fm-name" placeholder="Character Name">
+            <input type="text" class="form-input" id="fm-class" placeholder="Class / Subclass">
+          </div>
+          <div class="form-row">
+            <input type="text" class="form-input" id="fm-race" placeholder="Race">
+            <input type="number" class="form-input" id="fm-level" placeholder="Level" min="1" max="20">
+          </div>
+          <div class="form-row">
+            <input type="number" class="form-input" id="fm-hp" placeholder="Max HP" min="1">
+            <input type="number" class="form-input" id="fm-ac" placeholder="AC" min="1">
+            <input type="number" class="form-input" id="fm-speed" placeholder="Speed (ft)" min="0">
+          </div>
+          <div class="ability-form-grid">
+            <div><label>STR</label><input type="number" class="ability-input" id="fm-str" value="10" min="1" max="30"></div>
+            <div><label>DEX</label><input type="number" class="ability-input" id="fm-dex" value="10" min="1" max="30"></div>
+            <div><label>CON</label><input type="number" class="ability-input" id="fm-con" value="10" min="1" max="30"></div>
+            <div><label>INT</label><input type="number" class="ability-input" id="fm-int" value="10" min="1" max="30"></div>
+            <div><label>WIS</label><input type="number" class="ability-input" id="fm-wis" value="10" min="1" max="30"></div>
+            <div><label>CHA</label><input type="number" class="ability-input" id="fm-cha" value="10" min="1" max="30"></div>
+          </div>
+          <div class="form-row">
+            <button class="btn btn-primary" id="fm-save-btn">💾 Save Character</button>
+            <button class="btn" id="fm-cancel-btn">Cancel</button>
+          </div>
+        </div>
       </div>
 
-      <div class="control-group">
-        <label>Intensity</label>
-        <input type="range" id="intensity-slider" min="0.1" max="1" step="0.05" value="0.6">
-        <span class="range-value" id="intensity-value">60%</span>
+      <!-- ─── TAB: Adventure / Campaign Import ─── -->
+      <div class="rpg-tab-content" id="tab-adventure">
+
+        <!-- Import row -->
+        <div class="adv-import-row">
+          <button class="btn btn-primary" id="adv-import-btn">📂 Load Adventure</button>
+          <button class="btn btn-sm btn-danger" id="adv-clear-btn">🗑 Clear</button>
+          <input type="file" id="adv-file-input" accept=".json,.md,.txt,.markdown" style="display:none">
+        </div>
+
+        <!-- Empty state -->
+        <div id="adv-empty" class="adv-empty-state">
+          <div class="empty-icon">🗺</div>
+          <p>No adventure loaded.</p>
+          <p class="hint-text">Import a JSON, Markdown, or Text campaign file. The wizard will use it to guide your adventure.</p>
+        </div>
+
+
+        <!-- Adventure display -->
+        <div id="adv-display" style="display:none">
+          <!-- Title block -->
+          <div class="adv-title-block">
+            <div class="adv-title" id="adv-title">Adventure Name</div>
+            <div class="adv-meta" id="adv-meta"></div>
+          </div>
+
+          <!-- Overview / Synopsis -->
+          <div class="adv-overview" id="adv-overview"></div>
+
+          <!-- Search -->
+          <div class="adv-search-row">
+            <input type="text" id="adv-search" class="adv-search-input" placeholder="🔍 Search adventure...">
+          </div>
+
+          <!-- Chapter / Section List -->
+          <div class="adv-sections" id="adv-sections"></div>
+
+          <!-- Chapter Content Viewer -->
+          <div class="adv-content-viewer" id="adv-content-viewer" style="display:none">
+            <div class="adv-content-header">
+              <span id="adv-content-title"></span>
+              <button class="btn btn-sm" id="adv-back-btn">← Back</button>
+            </div>
+            <div class="adv-content-body" id="adv-content-body"></div>
+          </div>
+        </div>
       </div>
 
-      <button class="btn" id="auto-weather-btn">🌍 Auto-detect Weather</button>
-
-      <div class="weather-info" id="weather-info">
-        <span class="location">📍 Location not detected</span><br>
-        <span style="color: var(--text-muted);">Click "Auto-detect" to sync your local weather</span>
+      <!-- ─── TAB: Campaign Notes ─── -->
+      <div class="rpg-tab-content" id="tab-notes">
+        <div class="notes-toolbar">
+          <input type="text" id="notes-session-name" class="notes-session-input" placeholder="Session name..." maxlength="40">
+          <button class="btn btn-sm" id="notes-new-btn">+ New</button>
+          <button class="btn btn-sm" id="notes-export-btn">⬇ Export</button>
+        </div>
+        <div class="notes-session-list" id="notes-session-list"></div>
+        <textarea class="notes-area" id="notes-area" placeholder="Write your campaign notes here... The wizard will remember!"></textarea>
+        <div class="notes-footer">
+          <span class="notes-status" id="notes-status">No session selected</span>
+          <button class="btn btn-sm" id="notes-save-btn">💾 Save</button>
+        </div>
       </div>
 
-      <!-- API Key -->
-      <div class="control-group api-key-section">
-        <label>OpenAI API Key</label>
-        <input type="password" id="api-key-input" placeholder="sk-...">
-        <span class="hint">🔒 Stored locally only (localStorage)</span>
+      <!-- ─── Always-visible bottom: Settings ─── -->
+      <div class="rpg-settings-footer">
+        <div class="control-group-inline">
+          <label>State</label>
+          <select id="state-select">
+            <option value="idle">🧙 Idle</option>
+            <option value="talking">💬 Talking</option>
+            <option value="reading">📖 Reading</option>
+            <option value="sleeping">💤 Sleeping</option>
+            <option value="laughing">😄 Laughing</option>
+            <option value="sad">😔 Sad</option>
+            <option value="researching">🔮 Researching</option>
+          </select>
+        </div>
+        <div class="control-group-inline">
+          <label>Scale</label>
+          <input type="range" id="scale-slider" min="1" max="5" step="0.5" value="2" style="flex:1">
+          <span class="range-value" id="scale-value">2.0x</span>
+        </div>
+        <div class="control-group-inline">
+          <label>API Key</label>
+          <input type="password" id="api-key-input" placeholder="sk-..." style="flex:1;font-size:11px">
+        </div>
       </div>
     </div>
 
@@ -80,8 +316,20 @@
         <div class="speech-bubble" id="speech-bubble"></div>
         <canvas id="wizard-sprite" width="180" height="200"></canvas>
         <canvas id="weather-canvas" width="180" height="200"></canvas>
+        <!-- Scene image overlay for Narrative Mode -->
+        <img id="scene-image" class="scene-image" src="" alt="Adventure scene" style="display:none;opacity:0">
         <div class="glow-ring" id="glow-ring"></div>
       </div>
+
+      <!-- Narrative Mode toggle -->
+      <div class="narrative-controls">
+        <button class="btn adv-mode-btn" id="adv-mode-btn" title="Toggle Antigravity Narrative Mode">
+          <span id="adv-mode-label">🌌 Narrative Mode</span>
+        </button>
+      </div>
+
+      <!-- Engine status banner -->
+      <div class="adv-engine-banner" id="adv-engine-banner" style="opacity:0"></div>
 
       <div class="state-badge" id="state-label">idle</div>
     </div>
@@ -92,7 +340,7 @@
 
       <div class="chat-messages" id="chat-messages">
         <div class="chat-msg wizard">
-          🧙 Greetings, traveler! I am Vortex, keeper of ancient wisdom. Ask me anything, or simply watch my enchantments at play.
+          🧙 Greetings, traveler! I am Vortex, keeper of ancient wisdom. Roll the dice, consult your character sheet, or ask me anything about your adventure.
         </div>
       </div>
 
@@ -104,5 +352,7 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="rpg.js"></script>
+  <script src="adventure-engine.js"></script>
 </body>
 </html>

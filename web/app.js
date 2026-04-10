@@ -488,25 +488,28 @@ function updateMicroMotion(timestamp, dt) {
 
 function drawBlinkOverlay() {
   if (blinkAmount <= 0.01) return;
-  const uprightStates = ['idle', 'walking', 'talking', 'laughing', 'sad', 'happy', 'thinking'];
+  const uprightStates = ['idle', 'talking', 'laughing', 'reading', 'researching', 'sad'];
   if (!uprightStates.includes(currentState)) return;
 
-  const eyeWidth = canvas.width * 0.038;
-  const eyeGap = canvas.width * 0.10;
-  const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
-  const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
-  const leftCenterX = eyeCenterX - eyeGap * 0.5;
-  const rightCenterX = eyeCenterX + eyeGap * 0.5;
-  const lidHeight = canvas.height * 0.015 * blinkAmount;
+  // Eye positions tuned to wizard sprite — eyes sit at ~29% from top
+  const eyeGap  = canvas.width  * 0.075;
+  const eyeY    = canvas.height * 0.295;
+  const eyeCenX = canvas.width  * 0.475;
+  const lEx     = eyeCenX - eyeGap;
+  const rEx     = eyeCenX + eyeGap * 0.65;
+  const sW      = canvas.width  * 0.042;
+  const sH      = canvas.height * 0.024;
+  const lidH    = sH * 2 * blinkAmount;
 
-  ctx.save();
-  ctx.fillStyle = `rgba(198, 156, 109, ${0.7 + blinkAmount * 0.3})`;
-  for (const centerX of [leftCenterX, rightCenterX]) {
+  for (const cx of [lEx, rEx]) {
+    ctx.save();
+    ctx.fillStyle = `rgba(45, 28, 65, ${0.85 + blinkAmount * 0.15})`;
     ctx.beginPath();
-    ctx.ellipse(centerX, eyeY - lidHeight * 0.2, eyeWidth * 0.8, lidHeight, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(cx, eyeY, sW + 1, sH + 1, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillRect(cx - sW - 2, eyeY - sH - 1, sW * 2 + 4, lidH + 2);
+    ctx.restore();
   }
-  ctx.restore();
 }
 
 // ══════════════════════════════════════════════════
@@ -557,33 +560,48 @@ function updateGaze(dt) {
 }
 
 function drawGazePupils() {
-  const uprightStates = ['idle', 'walking', 'talking', 'laughing', 'sad', 'happy', 'thinking'];
+  const uprightStates = ['idle', 'talking', 'laughing', 'reading', 'researching', 'sad'];
   if (!uprightStates.includes(currentState)) return;
   if (blinkAmount > 0.7) return;
 
-  const eyeGap = canvas.width * 0.10;
-  const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
-  const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
-  const leftCenterX = eyeCenterX - eyeGap * 0.5;
-  const rightCenterX = eyeCenterX + eyeGap * 0.5;
-  const maxShiftX = canvas.width * 0.018;
-  const maxShiftY = canvas.height * 0.012;
-  const pupilRadius = Math.max(1, canvas.width * 0.012);
+  // Eye positions tuned to wizard sprite — eyes sit at ~29% from top
+  const eyeGap  = canvas.width  * 0.075;
+  const eyeY    = canvas.height * 0.295;
+  const eyeCenX = canvas.width  * 0.475;
+  const lEx     = eyeCenX - eyeGap;
+  const rEx     = eyeCenX + eyeGap * 0.65;
+
+  const sW      = canvas.width  * 0.042;
+  const sH      = canvas.height * 0.024;
+  const irisR   = sH * 0.78;
+  const pupilR  = irisR * 0.5;
+  const maxSX   = (sW - irisR) * 0.65;
+  const maxSY   = (sH - irisR * 0.5) * 0.6;
 
   ctx.save();
-  for (const centerX of [leftCenterX, rightCenterX]) {
-    const px = centerX + gazeSmoothedX * maxShiftX;
-    const py = eyeY + gazeSmoothedY * maxShiftY;
-
-    ctx.fillStyle = 'rgba(15, 5, 30, 0.85)';
+  for (const cx of [lEx, rEx]) {
+    // Clip to sclera boundary so pupil can't bleed outside
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(px, py, pupilRadius, 0, Math.PI * 2);
+    ctx.ellipse(cx, eyeY, sW, sH, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    const px = cx  + gazeSmoothedX * maxSX;
+    const py = eyeY + gazeSmoothedY * maxSY;
+
+    // Dark pupil dot
+    ctx.fillStyle = 'rgba(12, 6, 22, 0.92)';
+    ctx.beginPath();
+    ctx.arc(px, py, pupilR, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    // Specular highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.beginPath();
-    ctx.arc(px - pupilRadius * 0.3, py - pupilRadius * 0.3, pupilRadius * 0.35, 0, Math.PI * 2);
+    ctx.arc(px - pupilR * 0.35, py - pupilR * 0.38, pupilR * 0.38, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -828,6 +846,17 @@ async function sendChat(userMessage) {
 
   chatHistory.push({ role: 'user', content: userMessage });
 
+  // ── Adventure Mode: Antigravity system prompt ──
+  const narrativeActive = typeof AdventureEngine !== 'undefined' && AdventureEngine.active;
+  const systemPrompt = narrativeActive
+    ? AdventureEngine.systemPrompt
+    : 'You are a wise and whimsical wizard named Vortex. You speak in a mystical, slightly dramatic tone with occasional humor. Keep responses concise (2-3 sentences). Use occasional magic-themed language.';
+
+  // Include active adventure chapter if available
+  const adventureContext = window._adventureChapter
+    ? `\n\n[ACTIVE CAMPAIGN CHAPTER]\n${window._adventureChapter}`
+    : '';
+
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -840,11 +869,11 @@ async function sendChat(userMessage) {
         messages: [
           {
             role: 'system',
-            content: 'You are a wise and whimsical wizard named Vortex. You speak in a mystical, slightly dramatic tone with occasional humor. Keep responses concise (2-3 sentences). Use occasional magic-themed language.'
+            content: systemPrompt + adventureContext
           },
-          ...chatHistory.slice(-10) // Keep last 10 messages for context
+          ...chatHistory.slice(-10)
         ],
-        max_tokens: 150,
+        max_tokens: narrativeActive ? 600 : 150,
         temperature: 0.8
       })
     });
@@ -857,15 +886,22 @@ async function sendChat(userMessage) {
       return;
     }
 
-    const reply = data.choices?.[0]?.message?.content || 'The crystal ball is cloudy...';
-    chatHistory.push({ role: 'assistant', content: reply });
+    const rawReply = data.choices?.[0]?.message?.content || 'The crystal ball is cloudy...';
+    chatHistory.push({ role: 'assistant', content: rawReply });
 
-    setState('talking');
-    appendChatMessage('wizard', reply);
-    showSpeechBubble(reply.substring(0, 50) + (reply.length > 50 ? '...' : ''), 4000);
+    // ── Route through Antigravity Engine if active ──
+    let displayText = rawReply;
+    if (narrativeActive) {
+      displayText = await AdventureEngine.handleResponse(rawReply);
+    } else {
+      setState('talking');
+    }
+
+    appendChatMessage('wizard', displayText);
+    showSpeechBubble(displayText.substring(0, 60) + (displayText.length > 60 ? '...' : ''), 4000);
 
     // Use browser TTS
-    speakText(reply);
+    speakText(displayText);
 
     // Return to idle after speaking
     setTimeout(() => {
@@ -990,28 +1026,9 @@ function createAmbientParticles() {
 // ══════════════════════════════════════════════════
 
 function wireControls() {
-  // Weather select
-  const weatherSelect = document.getElementById('weather-select');
-  weatherSelect?.addEventListener('change', () => {
-    setWeather(weatherSelect.value, weatherIntensity);
-    config.weatherMode = weatherSelect.value;
-    saveConfig(config);
-  });
-
-  // Intensity slider
-  const intensitySlider = document.getElementById('intensity-slider');
-  const intensityValue = document.getElementById('intensity-value');
-  intensitySlider?.addEventListener('input', () => {
-    const val = parseFloat(intensitySlider.value);
-    weatherIntensity = val;
-    if (intensityValue) intensityValue.textContent = `${Math.round(val * 100)}%`;
-    config.weatherIntensity = val;
-    saveConfig(config);
-  });
-
   // Scale slider
   const scaleSlider = document.getElementById('scale-slider');
-  const scaleValue = document.getElementById('scale-value');
+  const scaleValue  = document.getElementById('scale-value');
   scaleSlider?.addEventListener('input', () => {
     const val = parseFloat(scaleSlider.value);
     applyScale(val);
@@ -1019,6 +1036,8 @@ function wireControls() {
     config.wizardScale = val;
     saveConfig(config);
   });
+  if (scaleSlider) scaleSlider.value = config.wizardScale;
+  if (scaleValue)  scaleValue.textContent = `${config.wizardScale.toFixed(1)}x`;
 
   // State select
   const stateSelect = document.getElementById('state-select');
@@ -1033,14 +1052,11 @@ function wireControls() {
     config.apiKey = apiKeyInput.value.trim();
     saveConfig(config);
   });
-  // Pre-fill if saved
-  if (apiKeyInput && config.apiKey) {
-    apiKeyInput.value = config.apiKey;
-  }
+  if (apiKeyInput && config.apiKey) apiKeyInput.value = config.apiKey;
 
   // Chat input
   const chatInput = document.getElementById('chat-input');
-  const chatSend = document.getElementById('chat-send');
+  const chatSend  = document.getElementById('chat-send');
 
   function submitChat() {
     const text = chatInput?.value.trim();
@@ -1053,24 +1069,6 @@ function wireControls() {
   chatInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') submitChat();
   });
-
-  // Auto weather button
-  const autoWeatherBtn = document.getElementById('auto-weather-btn');
-  autoWeatherBtn?.addEventListener('click', async () => {
-    autoWeatherBtn.textContent = '🔍 Detecting...';
-    autoWeatherBtn.disabled = true;
-    const result = await fetchLiveWeather();
-    autoWeatherBtn.textContent = result ? '✅ Weather synced!' : '❌ Could not detect';
-    autoWeatherBtn.disabled = false;
-    setTimeout(() => { autoWeatherBtn.textContent = '🌍 Auto-detect Weather'; }, 3000);
-  });
-
-  // Set initial slider values from config
-  if (scaleSlider) scaleSlider.value = config.wizardScale;
-  if (scaleValue) scaleValue.textContent = `${config.wizardScale.toFixed(1)}x`;
-  if (intensitySlider) intensitySlider.value = config.weatherIntensity;
-  if (intensityValue) intensityValue.textContent = `${Math.round(config.weatherIntensity * 100)}%`;
-  if (weatherSelect && config.weatherMode) weatherSelect.value = config.weatherMode;
 }
 
 // ══════════════════════════════════════════════════
@@ -1122,6 +1120,6 @@ document.addEventListener('DOMContentLoaded', () => {
     showSpeechBubble('🧙 Greetings, traveler! Move your mouse to guide my gaze.', 5000);
   }, 1500);
 
-  // Try auto weather on load
-  setTimeout(() => fetchLiveWeather(), 3000);
+  // Wizard ambient greeting
+  setTimeout(() => fetchLiveWeather().catch(() => {}), 3000);
 });
