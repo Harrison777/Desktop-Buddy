@@ -664,34 +664,29 @@
     }
 
     function drawBlinkOverlay() {
-      if (blinkAmount <= 0.01 || currentState === 'sleeping') return;
+      if (blinkAmount <= 0.01) return;
+      // Only draw blink overlay when face is in standard upright position
+      const uprightStates = ['idle', 'walking', 'talking', 'laughing', 'sad', 'happy', 'thinking'];
+      if (!uprightStates.includes(currentState)) return;
 
-      const lidDrop = canvas.height * (0.003 + blinkAmount * 0.02);
-      const eyeWidth = canvas.width * 0.05;
+      const eyeWidth = canvas.width * 0.038;
       const eyeGap = canvas.width * 0.10;
       const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
       const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
       const leftCenterX = eyeCenterX - eyeGap * 0.5;
       const rightCenterX = eyeCenterX + eyeGap * 0.5;
-      const arcLift = canvas.height * 0.008;
+
+      // Eyelid closes from above — a small filled ellipse per eye
+      const lidHeight = canvas.height * 0.015 * blinkAmount;
 
       ctx.save();
-      ctx.strokeStyle = `rgba(36, 18, 60, ${0.28 + blinkAmount * 0.38})`;
-      ctx.lineWidth = Math.max(1.35, canvas.width * 0.009);
-      ctx.lineCap = 'round';
+      // Use a skin-tone that blends with the wizard's face
+      ctx.fillStyle = `rgba(198, 156, 109, ${0.7 + blinkAmount * 0.3})`;
 
       for (const centerX of [leftCenterX, rightCenterX]) {
         ctx.beginPath();
-        ctx.moveTo(centerX - eyeWidth, eyeY);
-        ctx.quadraticCurveTo(centerX, eyeY + lidDrop - arcLift, centerX + eyeWidth, eyeY);
-        ctx.stroke();
-
-        if (blinkAmount > 0.45) {
-          ctx.beginPath();
-          ctx.moveTo(centerX - eyeWidth * 0.5, eyeY + lidDrop * 0.42);
-          ctx.quadraticCurveTo(centerX, eyeY + lidDrop * 0.8, centerX + eyeWidth * 0.5, eyeY + lidDrop * 0.42);
-          ctx.stroke();
-        }
+        ctx.ellipse(centerX, eyeY - lidHeight * 0.2, eyeWidth * 0.8, lidHeight, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       ctx.restore();
@@ -735,8 +730,9 @@
     // Draw dynamic pupil dots that follow the cursor.
     // These sit OVER the sprite's painted eyes.
     function drawGazePupils() {
-      // Don't draw pupils while sleeping or blinking hard
-      if (currentState === 'sleeping') return;
+      // Only draw pupils when face is in standard upright position
+      const uprightStates = ['idle', 'walking', 'talking', 'laughing', 'sad', 'happy', 'thinking'];
+      if (!uprightStates.includes(currentState)) return;
       if (blinkAmount > 0.7) return;
 
       // Eye geometry — matches drawBlinkOverlay positions
@@ -1142,9 +1138,12 @@
           ctx.scale(squashX, squashY);
           // Draw the frame, fitting into our display canvas
           ctx.drawImage(frameCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
-          ctx.restore();
+          // Draw overlays in the same transform space so they follow lean/breathe
+          ctx.translate(-canvas.width / 2, -canvas.height / 2);
+          ctx.scale(1 / squashX, 1 / squashY);
           drawBlinkOverlay();
           drawGazePupils();
+          ctx.restore();
         } else {
           drawPlaceholder();
         }

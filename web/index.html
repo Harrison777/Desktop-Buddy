@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desktop Wizard — Arcane Companion</title>
+  <meta name="description" content="An interactive wizard companion that follows your cursor, reacts to weather, and chats with AI-powered wisdom.">
+  <link rel="icon" href="assets/wizard_hat_icon.png" type="image/png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background particles -->
+  <div class="ambient-particles"></div>
+
+  <div class="app-wrapper">
+    <!-- ═══ Left Panel: Controls ═══ -->
+    <div class="panel controls-panel">
+      <div class="panel-title">⚙️ Arcane Controls</div>
+
+      <!-- State -->
+      <div class="control-group">
+        <label>Wizard State</label>
+        <select id="state-select">
+          <option value="idle">🧙 Idle</option>
+          <option value="talking">💬 Talking</option>
+          <option value="reading">📖 Reading</option>
+          <option value="sleeping">💤 Sleeping</option>
+          <option value="laughing">😄 Laughing</option>
+          <option value="sad">😔 Sad</option>
+          <option value="researching">🔮 Researching</option>
+        </select>
+      </div>
+
+      <!-- Scale -->
+      <div class="control-group">
+        <label>Scale</label>
+        <input type="range" id="scale-slider" min="1" max="5" step="0.5" value="2">
+        <span class="range-value" id="scale-value">2.0x</span>
+      </div>
+
+      <!-- Weather -->
+      <div class="control-group">
+        <label>Weather</label>
+        <select id="weather-select">
+          <option value="none">☀️ Clear</option>
+          <option value="rain">🌧️ Rain</option>
+          <option value="snow">❄️ Snow</option>
+          <option value="lightning">⚡ Lightning</option>
+          <option value="storm">🌩️ Storm</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Intensity</label>
+        <input type="range" id="intensity-slider" min="0.1" max="1" step="0.05" value="0.6">
+        <span class="range-value" id="intensity-value">60%</span>
+      </div>
+
+      <button class="btn" id="auto-weather-btn">🌍 Auto-detect Weather</button>
+
+      <div class="weather-info" id="weather-info">
+        <span class="location">📍 Location not detected</span><br>
+        <span style="color: var(--text-muted);">Click "Auto-detect" to sync your local weather</span>
+      </div>
+
+      <!-- API Key -->
+      <div class="control-group api-key-section">
+        <label>OpenAI API Key</label>
+        <input type="password" id="api-key-input" placeholder="sk-...">
+        <span class="hint">🔒 Stored locally only (localStorage)</span>
+      </div>
+    </div>
+
+    <!-- ═══ Center: Wizard Stage ═══ -->
+    <div class="wizard-stage">
+      <h1>Desktop Wizard</h1>
+      <p class="subtitle">Arcane Companion · Web Edition</p>
+
+      <div class="wizard-viewport">
+        <div class="speech-bubble" id="speech-bubble"></div>
+        <canvas id="wizard-sprite" width="180" height="200"></canvas>
+        <canvas id="weather-canvas" width="180" height="200"></canvas>
+        <div class="glow-ring" id="glow-ring"></div>
+      </div>
+
+      <div class="state-badge" id="state-label">idle</div>
+    </div>
+
+    <!-- ═══ Right Panel: Chat ═══ -->
+    <div class="panel chat-panel">
+      <div class="panel-title">💬 Wizard Chat</div>
+
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg wizard">
+          🧙 Greetings, traveler! I am Vortex, keeper of ancient wisdom. Ask me anything, or simply watch my enchantments at play.
+        </div>
+      </div>
+
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Speak to the wizard...">
+        <button class="btn btn-primary" id="chat-send">✨</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

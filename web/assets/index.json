@@ -1,0 +1,64 @@
+{
+  "spriteSheet": "wizard_spritesheet_transparent.png",
+  "layout": {
+    "type": "grid",
+    "columns": 4,
+    "rows": 3
+  },
+  "totalFrames": 10,
+  "states": {
+    "idle": {
+      "description": "Neutral standing pose",
+      "frames": [0],
+      "fps": 1
+    },
+    "talking": {
+      "description": "Mouth movement cycle",
+      "frames": [1, 2, 3, 4],
+      "fps": 6
+    },
+    "reading": {
+      "description": "Reading pose (flipping pages)",
+      "frames": [5],
+      "fps": 1,
+      "trigger": "Idle_Time > shortIdleSeconds"
+    },
+    "sleeping": {
+      "description": "Sleeping pose (slow breathing + Z bubbles)",
+      "frames": [6],
+      "fps": 0.5,
+      "trigger": "Idle_Time > longIdleSeconds"
+    },
+    "laughing": {
+      "description": "Laughing frame (3-second duration)",
+      "frames": [7],
+      "fps": 2,
+      "trigger": "Sentiment_Score > 0.8 OR keywords: haha, lol",
+      "duration": 3000
+    },
+    "sad": {
+      "description": "Sad pose (droopy hat, persists until next chat)",
+      "frames": [8],
+      "fps": 1,
+      "trigger": "Sentiment_Score < -0.6"
+    },
+    "researching": {
+      "description": "Researching pose (hunched over pedestal)",
+      "frames": [9],
+      "fps": 2,
+      "trigger": "API_Request_Pending == true"
+    }
+  },
+  "frames": {
+    "0": { "name": "Neutral Idle", "grid": [0, 0] },
+    "1": { "name": "Talking - Closed", "grid": [1, 0] },
+    "2": { "name": "Talking - Slight Open", "grid": [2, 0] },
+    "3": { "name": "Talking - Wide Open", "grid": [3, 0] },
+    "4": { "name": "Talking - Round", "grid": [0, 1] },
+    "5": { "name": "Reading", "grid": [2, 1] },
+    "6": { "name": "Sleeping", "grid": [3, 1] },
+    "7": { "name": "Laughing", "grid": [0, 2] },
+    "8": { "name": "Sad", "grid": [2, 2] },
+    "9": { "name": "Researching", "grid": [3, 2] }
+  }
+}
