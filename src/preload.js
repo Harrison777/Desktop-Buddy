@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('wizard', {
   getGameState:   () => ipcRenderer.invoke('get-game-state'),
   resetGameState: () => ipcRenderer.send('reset-game-state'),
   rollDice:       (sides) => ipcRenderer.invoke('roll-dice', sides),
+  importFile:     () => ipcRenderer.invoke('import-file'),
 
   // Game events from main process
   onDiceRolled:     (cb) => ipcRenderer.on('dice-rolled',     (_, r)    => cb(r)),
@@ -56,4 +57,9 @@ contextBridge.exposeInMainWorld('wizard', {
 
   // Shell utilities
   openPath: (filePath) => ipcRenderer.send('open-path', filePath),
+
+  // Character Sheet persistence
+  saveCharacterSheet:   (data) => ipcRenderer.invoke('save-character-sheet', data),
+  getCharacterSheet:    ()     => ipcRenderer.invoke('get-character-sheet'),
+  exportCharacterSheet: (data) => ipcRenderer.invoke('export-character-sheet', data),
 });

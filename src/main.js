@@ -1011,10 +1011,123 @@ function setupIPC() {
     return result;
   });
 
-  // Shell utilities
-  const { shell } = require('electron');
+  // Shell utilities & file import
+  const { shell, dialog } = require('electron');
   ipcMain.on('open-path', (_, filePath) => {
     shell.showItemInFolder(filePath);
+  });
+
+  // ── Import file (character sheet / lore) ──
+  ipcMain.handle('import-file', async () => {
+    const result = await dialog.showOpenDialog(chatWindow || buddyWindow, {
+      title: 'Import Character Sheet or Lore File',
+      buttonLabel: 'Import',
+      filters: [
+        { name: 'Character Sheets & Lore', extensions: ['md', 'txt', 'json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    });
+
+    if (result.canceled || !result.filePaths.length) return null;
+
+    const filePath = result.filePaths[0];
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      // Safety: cap at 20 kB to avoid flooding the context window
+      const MAX = 20 * 1024;
+      return {
+        name: path.basename(filePath),
+        content: content.length > MAX
+          ? content.slice(0, MAX) + '\n\n[... file truncated at 20 kB ...]'
+          : content
+      };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // ── Character Sheet persistence ──
+  ipcMain.handle('save-character-sheet', async (_, sheetData) => {
+    try {
+      const cfg = loadConfig();
+      cfg.characterSheet = sheetData;
+      saveConfig(cfg);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('get-character-sheet', async () => {
+    try {
+      const cfg = loadConfig();
+      return cfg.characterSheet || null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // ── Export Character Sheet as Markdown ──
+  ipcMain.handle('export-character-sheet', async (_, d) => {
+    const os = require('os');
+    const safeName = (d.name || 'character').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const saveResult = await dialog.showSaveDialog(chatWindow || buddyWindow, {
+      title: 'Export Character Sheet',
+      defaultPath: path.join(os.homedir(), 'Desktop', `${safeName}_sheet.md`),
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Text',     extensions: ['txt'] }
+      ]
+    });
+    if (saveResult.canceled) return null;
+
+    const pb  = Math.ceil((d.level || 1) / 4) + 1;
+    const mod = v => { const m = Math.floor((v || 10) / 2) - 5; return (m >= 0 ? '+' : '') + m; };
+    const save = (stat) => {
+      const base  = Math.floor(((d.stats || {})[stat] || 10) / 2) - 5;
+      const prof  = (d.saves || {})[stat];
+      const total = base + (prof ? pb : 0);
+      return (total >= 0 ? '+' : '') + total + (prof ? ' ●' : ' ○');
+    };
+
+    const md = [
+      `# ${d.name || 'Unnamed Hero'}`,
+      `*${d.race || '?'} ${d.class || '?'} — Level ${d.level || 1} — ${d.alignment || '?'}*`,
+      ``,
+      `## Identity`,
+      `| Field | Value |`,
+      `|---|---|`,
+      `| Player | ${d.player || '—'} |`,
+      `| Background | ${d.background || '—'} |`,
+      `| Experience | ${d.xp || 0} XP |`,
+      ``,
+      `## Combat`,
+      `| HP (Current / Max) | Armor Class | Speed |`,
+      `|---|---|---|`,
+      `| ${d.hpCur || 0} / ${d.hpMax || 0} | ${d.ac || 10} | ${d.speed || 30} ft |`,
+      ``,
+      `## Ability Scores`,
+      `| STR | DEX | CON | INT | WIS | CHA |`,
+      `|---|---|---|---|---|---|`,
+      `| ${d.stats?.str||10} (${mod(d.stats?.str)}) | ${d.stats?.dex||10} (${mod(d.stats?.dex)}) | ${d.stats?.con||10} (${mod(d.stats?.con)}) | ${d.stats?.int||10} (${mod(d.stats?.int)}) | ${d.stats?.wis||10} (${mod(d.stats?.wis)}) | ${d.stats?.cha||10} (${mod(d.stats?.cha)}) |`,
+      ``,
+      `## Saving Throws`,
+      `*(● = Proficient, PB: +${pb})*`,
+      `| STR | DEX | CON | INT | WIS | CHA |`,
+      `|---|---|---|---|---|---|`,
+      `| ${save('str')} | ${save('dex')} | ${save('con')} | ${save('int')} | ${save('wis')} | ${save('cha')} |`,
+      ``,
+      d.equipment ? `## Equipment\n${d.equipment}\n` : '',
+      d.features  ? `## Features & Traits\n${d.features}\n` : '',
+      d.backstory ? `## Character Backstory\n${d.backstory}\n` : '',
+      d.notes     ? `## Notes\n${d.notes}\n` : '',
+      `---`,
+      `*Exported from Desktop Wizard — ${new Date().toLocaleDateString()}*`
+    ].filter(l => l !== undefined).join('\n');
+
+    fs.writeFileSync(saveResult.filePath, md, 'utf-8');
+    return { filePath: saveResult.filePath };
   });
 }
 

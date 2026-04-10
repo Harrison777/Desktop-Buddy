@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -219,6 +219,449 @@
       align-self: flex-start;
     }
     #new-session-btn:hover { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.5); }
+
+    /* ── DM toolbar (Import / Export / New Session) ── */
+    #dm-toolbar {
+      display: none;
+      flex-direction: row;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(20, 5, 30, 0.6);
+      border-top: 1px solid rgba(239, 68, 68, 0.12);
+    }
+    .dm-tool-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: #fca5a5;
+      border-radius: 7px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .dm-tool-btn:hover   { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.5); color: #fff; }
+    .dm-tool-btn:active  { transform: scale(0.96); }
+    .dm-tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .dm-tool-btn.export-btn {
+      background: rgba(139,92,246,0.08);
+      border-color: rgba(139,92,246,0.25);
+      color: #c4b5fd;
+    }
+    .dm-tool-btn.export-btn:hover { background: rgba(139,92,246,0.18); border-color: rgba(139,92,246,0.5); color: #fff; }
+    .dm-tool-btn.sheet-btn {
+      background: rgba(251,191,36,0.08);
+      border-color: rgba(251,191,36,0.28);
+      color: #fde68a;
+    }
+    .dm-tool-btn.sheet-btn:hover { background: rgba(251,191,36,0.18); border-color: rgba(251,191,36,0.55); color: #fff; }
+    .dm-tool-btn.sheet-btn.active { background: rgba(251,191,36,0.22); border-color: rgba(251,191,36,0.7); color: #fef3c7; box-shadow: 0 0 8px rgba(251,191,36,0.25); }
+    #dm-toolbar .toolbar-spacer { flex: 1; }
+    #dm-toolbar .new-session-tool {
+      background: transparent;
+      border-color: rgba(239,68,68,0.15);
+      color: rgba(239,68,68,0.5);
+      font-size: 10px;
+    }
+    #dm-toolbar .new-session-tool:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    /* Import progress indicator */
+    #import-status {
+      font-size: 10px;
+      color: #a78bfa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #import-status.show { opacity: 1; }
+
+    /* ══════════════════════════════════════════════════════════
+       CHARACTER SHEET PANEL
+       ══════════════════════════════════════════════════════════ */
+    #char-sheet-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(160deg, rgba(10,4,28,0.98) 0%, rgba(20,8,45,0.99) 100%);
+      border-radius: 16px;
+      overflow: hidden;
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+      border: 1px solid rgba(251,191,36,0.18);
+      box-shadow: inset 0 1px 0 rgba(251,191,36,0.08), 0 -8px 40px rgba(0,0,0,0.6);
+    }
+    #char-sheet-panel.open {
+      transform: translateY(0);
+      pointer-events: all;
+    }
+
+    /* Sheet header */
+    .cs-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 8px;
+      background: linear-gradient(90deg, rgba(251,191,36,0.08), rgba(139,92,246,0.08));
+      border-bottom: 1px solid rgba(251,191,36,0.14);
+      flex-shrink: 0;
+    }
+    .cs-header-title {
+      font-family: 'MedievalSharp', cursive;
+      font-size: 14px;
+      background: linear-gradient(90deg, #fbbf24, #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 0.5px;
+    }
+    .cs-header-actions { display: flex; gap: 6px; align-items: center; }
+    .cs-save-btn {
+      background: linear-gradient(135deg, rgba(251,191,36,0.2), rgba(251,191,36,0.08));
+      border: 1px solid rgba(251,191,36,0.4);
+      color: #fde68a;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .cs-save-btn:hover { background: rgba(251,191,36,0.3); border-color: rgba(251,191,36,0.65); color: #fff; transform: translateY(-1px); }
+    .cs-save-btn:active { transform: scale(0.96); }
+    .cs-close-btn {
+      background: transparent;
+      border: 1px solid rgba(239,68,68,0.25);
+      color: rgba(239,68,68,0.6);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      line-height: 1;
+    }
+    .cs-close-btn:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.5); color: #fca5a5; }
+
+    /* Sheet body */
+    .cs-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(251,191,36,0.3) transparent;
+    }
+    .cs-body::-webkit-scrollbar { width: 3px; }
+    .cs-body::-webkit-scrollbar-thumb { background: rgba(251,191,36,0.3); border-radius: 3px; }
+
+    /* Identity row */
+    .cs-section-title {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(251,191,36,0.55);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cs-section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(251,191,36,0.25), transparent);
+    }
+
+    /* Field groups */
+    .cs-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cs-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .cs-field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .cs-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    .cs-input {
+      background: rgba(251,191,36,0.04);
+      border: 1px solid rgba(251,191,36,0.15);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 12px;
+      color: var(--text-primary);
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    .cs-input:focus {
+      border-color: rgba(251,191,36,0.5);
+      background: rgba(251,191,36,0.07);
+      box-shadow: 0 0 0 2px rgba(251,191,36,0.1);
+    }
+    .cs-input.cs-textarea { resize: none; min-height: 54px; line-height: 1.4; }
+    .cs-input[type="number"] { -moz-appearance: textfield; }
+    .cs-input[type="number"]::-webkit-inner-spin-button { display: none; }
+    select.cs-input {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23a78bfa'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      padding-right: 24px;
+      cursor: pointer;
+    }
+    select.cs-input option {
+      background: #16093a;
+      color: var(--text-primary);
+    }
+
+    /* Quick-Build bar */
+    .cs-quickbuild {
+      display: flex;
+      gap: 6px;
+      padding: 8px 10px;
+      background: rgba(251,191,36,0.04);
+      border: 1px solid rgba(251,191,36,0.1);
+      border-radius: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .cs-qb-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      flex: 1;
+      min-width: 60px;
+    }
+    .cs-roll-btn {
+      background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(139,92,246,0.08));
+      border: 1px solid rgba(168,85,247,0.3);
+      color: #c4b5fd;
+      border-radius: 6px;
+      padding: 5px 11px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .cs-roll-btn:hover {
+      background: rgba(168,85,247,0.28);
+      border-color: rgba(168,85,247,0.6);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+    .cs-roll-btn.full-roll {
+      background: linear-gradient(135deg, rgba(251,191,36,0.18), rgba(251,191,36,0.06));
+      border-color: rgba(251,191,36,0.35);
+      color: #fde68a;
+    }
+    .cs-roll-btn.full-roll:hover {
+      background: rgba(251,191,36,0.28);
+      border-color: rgba(251,191,36,0.65);
+      color: #fff;
+    }
+    @keyframes statRoll {
+      0%   { transform: scale(1);    border-color: rgba(168,85,247,0.3); }
+      40%  { transform: scale(1.12); border-color: rgba(168,85,247,0.9); box-shadow: 0 0 8px rgba(168,85,247,0.5); }
+      100% { transform: scale(1);    border-color: rgba(168,85,247,0.3); }
+    }
+    .cs-stat-box.rolling { animation: statRoll 0.45s ease; }
+
+    /* Stat block */
+    .cs-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    .cs-stat-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: rgba(139,92,246,0.06);
+      border: 1px solid rgba(139,92,246,0.18);
+      border-radius: 8px;
+      padding: 6px 4px 5px;
+      cursor: default;
+      transition: border-color 0.2s;
+    }
+    .cs-stat-box:focus-within { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.05); }
+    .cs-stat-abbr {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #a78bfa;
+    }
+    .cs-stat-input {
+      background: transparent;
+      border: none;
+      color: #e9d5ff;
+      font-size: 18px;
+      font-weight: 700;
+      width: 100%;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+      line-height: 1.1;
+    }
+    .cs-stat-input::-webkit-inner-spin-button { display: none; }
+    .cs-stat-mod {
+      font-size: 10px;
+      font-weight: 600;
+      color: #7c3aed;
+      line-height: 1;
+    }
+    .cs-stat-mod.pos { color: #34d399; }
+    .cs-stat-mod.neg { color: #f87171; }
+
+    /* Save throws row */
+    .cs-saves-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .cs-save-field {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(56,189,248,0.04);
+      border: 1px solid rgba(56,189,248,0.12);
+      border-radius: 6px;
+      padding: 4px 7px;
+    }
+    .cs-save-label {
+      font-size: 9px;
+      color: var(--text-dim);
+      flex: 1;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .cs-save-val {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      min-width: 18px;
+      text-align: right;
+    }
+    .cs-prof-check {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(56,189,248,0.4);
+      cursor: pointer;
+      background: transparent;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      appearance: none;
+    }
+    .cs-prof-check:checked {
+      background: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 6px rgba(56,189,248,0.5);
+    }
+
+    /* HP / Combat row */
+    .cs-combat-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .cs-combat-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: rgba(239,68,68,0.05);
+      border: 1px solid rgba(239,68,68,0.15);
+      border-radius: 8px;
+      padding: 6px 4px;
+    }
+    .cs-combat-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(252,165,165,0.6);
+    }
+    .cs-combat-input {
+      background: transparent;
+      border: none;
+      color: #fca5a5;
+      font-size: 18px;
+      font-weight: 700;
+      width: 100%;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .cs-combat-input::-webkit-inner-spin-button { display: none; }
+
+    /* Equipment / Notes */
+    .cs-notes-input {
+      background: rgba(30,18,60,0.5);
+      border: 1px solid rgba(168,85,247,0.15);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--text-primary);
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      min-height: 64px;
+      width: 100%;
+      line-height: 1.45;
+      transition: border-color 0.2s;
+    }
+    .cs-notes-input:focus { border-color: rgba(168,85,247,0.4); }
+
+    /* Sheet footer */
+    .cs-footer {
+      padding: 8px 14px;
+      border-top: 1px solid rgba(251,191,36,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      background: rgba(10,4,28,0.5);
+    }
+    .cs-send-btn {
+      background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(139,92,246,0.1));
+      border: 1px solid rgba(139,92,246,0.4);
+      color: #c4b5fd;
+      border-radius: 7px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .cs-send-btn:hover { background: rgba(139,92,246,0.35); border-color: rgba(139,92,246,0.7); color: #fff; }
+    .cs-status {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-style: italic;
+    }
 
     /* ── Chat Messages ── */
     #messages {
@@ -561,7 +1004,251 @@
     </div>
 
     <!-- New Session button (DM mode) -->
-    <button id="new-session-btn" onclick="newSession()">🗡️ New Session</button>
+    <button id="new-session-btn" style="display:none" onclick="newSession()">🗡️ New Session</button>
+
+    <!-- Character Sheet Panel (slides up from bottom, overlays the window) -->
+    <div id="char-sheet-panel">
+      <div class="cs-header">
+        <span class="cs-header-title">📋 Character Sheet</span>
+        <div class="cs-header-actions">
+          <button class="cs-save-btn" onclick="saveCharacterSheet()">💾 Save</button>
+          <button class="cs-close-btn" onclick="closeCharSheet()">✕</button>
+        </div>
+      </div>
+
+      <div class="cs-body">
+        <!-- Quick Build Bar -->
+        <div class="cs-quickbuild">
+          <span class="cs-qb-label">Quick Build</span>
+          <button class="cs-roll-btn" onclick="rollStats()" title="Roll 4d6 drop lowest for each ability score">🎲 Roll Stats</button>
+          <button class="cs-roll-btn full-roll" onclick="rollFullSheet()" title="Generate a complete random character instantly">⚡ Full Auto-Roll</button>
+        </div>
+
+        <!-- Identity -->
+        <div>
+          <div class="cs-section-title">Identity</div>
+          <div class="cs-grid-2">
+            <div class="cs-field">
+              <label class="cs-label">Character Name</label>
+              <input class="cs-input" id="cs-name" type="text" placeholder="Aldric Stonehaven" maxlength="40">
+            </div>
+            <div class="cs-field">
+              <label class="cs-label">Player Name</label>
+              <input class="cs-input" id="cs-player" type="text" placeholder="Your name" maxlength="40">
+            </div>
+          </div>
+          <div class="cs-grid-3" style="margin-top:8px">
+            <div class="cs-field">
+              <label class="cs-label">Race</label>
+              <select class="cs-input" id="cs-race">
+                <option value="">— Choose —</option>
+                <option>Human</option><option>Elf</option><option>High Elf</option>
+                <option>Wood Elf</option><option>Drow</option><option>Dwarf</option>
+                <option>Hill Dwarf</option><option>Mountain Dwarf</option>
+                <option>Halfling</option><option>Lightfoot Halfling</option>
+                <option>Stout Halfling</option><option>Gnome</option>
+                <option>Rock Gnome</option><option>Forest Gnome</option>
+                <option>Half-Elf</option><option>Half-Orc</option>
+                <option>Tiefling</option><option>Dragonborn</option>
+                <option>Aasimar</option><option>Genasi</option>
+                <option>Goliath</option><option>Tabaxi</option>
+                <option>Kenku</option><option>Lizardfolk</option>
+                <option>Tortle</option><option>Custom / Other</option>
+              </select>
+            </div>
+            <div class="cs-field">
+              <label class="cs-label">Class</label>
+              <select class="cs-input" id="cs-class">
+                <option value="">— Choose —</option>
+                <option>Barbarian</option><option>Bard</option><option>Cleric</option>
+                <option>Druid</option><option>Fighter</option><option>Monk</option>
+                <option>Paladin</option><option>Ranger</option><option>Rogue</option>
+                <option>Sorcerer</option><option>Warlock</option><option>Wizard</option>
+                <option>Artificer</option><option>Blood Hunter</option>
+                <option>Custom / Other</option>
+              </select>
+            </div>
+            <div class="cs-field">
+              <label class="cs-label">Background</label>
+              <select class="cs-input" id="cs-background">
+                <option value="">— Choose —</option>
+                <option>Acolyte</option><option>Charlatan</option><option>Criminal</option>
+                <option>Entertainer</option><option>Folk Hero</option>
+                <option>Guild Artisan</option><option>Hermit</option><option>Noble</option>
+                <option>Outlander</option><option>Sage</option><option>Sailor</option>
+                <option>Soldier</option><option>Urchin</option><option>Haunted One</option>
+                <option>Far Traveler</option><option>Custom / Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="cs-grid-3" style="margin-top:8px">
+            <div class="cs-field">
+              <label class="cs-label">Level</label>
+              <input class="cs-input" id="cs-level" type="number" min="1" max="20" value="1">
+            </div>
+            <div class="cs-field">
+              <label class="cs-label">Experience</label>
+              <input class="cs-input" id="cs-xp" type="number" min="0" value="0">
+            </div>
+            <div class="cs-field">
+              <label class="cs-label">Alignment</label>
+              <select class="cs-input" id="cs-alignment">
+                <option value="">— Choose —</option>
+                <option>Lawful Good</option><option>Neutral Good</option>
+                <option>Chaotic Good</option><option>Lawful Neutral</option>
+                <option>True Neutral</option><option>Chaotic Neutral</option>
+                <option>Lawful Evil</option><option>Neutral Evil</option>
+                <option>Chaotic Evil</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Combat Stats -->
+        <div>
+          <div class="cs-section-title">Combat</div>
+          <div class="cs-combat-strip">
+            <div class="cs-combat-cell">
+              <span class="cs-combat-label">HP Max</span>
+              <input class="cs-combat-input" id="cs-hp-max" type="number" min="0" value="8" oninput="updateSheet()">
+            </div>
+            <div class="cs-combat-cell">
+              <span class="cs-combat-label">HP Cur</span>
+              <input class="cs-combat-input" id="cs-hp-cur" type="number" value="8">
+            </div>
+            <div class="cs-combat-cell" style="border-color:rgba(56,189,248,0.2); background:rgba(56,189,248,0.05)">
+              <span class="cs-combat-label" style="color:rgba(147,210,248,0.6)">AC</span>
+              <input class="cs-combat-input" id="cs-ac" type="number" min="0" value="10" style="color:#93c5fd">
+            </div>
+            <div class="cs-combat-cell" style="border-color:rgba(251,191,36,0.2); background:rgba(251,191,36,0.04)">
+              <span class="cs-combat-label" style="color:rgba(253,230,138,0.6)">Speed</span>
+              <input class="cs-combat-input" id="cs-speed" type="number" min="0" value="30" style="color:#fde68a">
+            </div>
+          </div>
+        </div>
+
+        <!-- Ability Scores -->
+        <div>
+          <div class="cs-section-title">Ability Scores</div>
+          <div class="cs-stat-grid">
+            <div class="cs-stat-box" title="Strength">
+              <span class="cs-stat-abbr">STR</span>
+              <input class="cs-stat-input" id="cs-str" type="number" min="1" max="30" value="10" oninput="updateMods()">
+              <span class="cs-stat-mod" id="cs-str-mod">+0</span>
+            </div>
+            <div class="cs-stat-box" title="Dexterity">
+              <span class="cs-stat-abbr">DEX</span>
+              <input class="cs-stat-input" id="cs-dex" type="number" min="1" max="30" value="10" oninput="updateMods()">
+              <span class="cs-stat-mod" id="cs-dex-mod">+0</span>
+            </div>
+            <div class="cs-stat-box" title="Constitution">
+              <span class="cs-stat-abbr">CON</span>
+              <input class="cs-stat-input" id="cs-con" type="number" min="1" max="30" value="10" oninput="updateMods()">
+              <span class="cs-stat-mod" id="cs-con-mod">+0</span>
+            </div>
+            <div class="cs-stat-box" title="Intelligence">
+              <span class="cs-stat-abbr">INT</span>
+              <input class="cs-stat-input" id="cs-int" type="number" min="1" max="30" value="10" oninput="updateMods()">
+              <span class="cs-stat-mod" id="cs-int-mod">+0</span>
+            </div>
+            <div class="cs-stat-box" title="Wisdom">
+              <span class="cs-stat-abbr">WIS</span>
+              <input class="cs-stat-input" id="cs-wis" type="number" min="1" max="30" value="10" oninput="updateMods()">
+              <span class="cs-stat-mod" id="cs-wis-mod">+0</span>
+            </div>
+            <div class="cs-stat-box" title="Charisma">
+              <span class="cs-stat-abbr">CHA</span>
+              <input class="cs-stat-input" id="cs-cha" type="number" min="1" max="30" value="10" oninput="updateMods()">
+              <span class="cs-stat-mod" id="cs-cha-mod">+0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Saving Throws -->
+        <div>
+          <div class="cs-section-title">Saving Throws</div>
+          <div class="cs-saves-grid">
+            <div class="cs-save-field" title="Proficient in STR saves?">
+              <input type="checkbox" class="cs-prof-check" id="cs-save-str-prof" onchange="updateSaves()">
+              <span class="cs-save-label">STR</span>
+              <span class="cs-save-val" id="cs-save-str">+0</span>
+            </div>
+            <div class="cs-save-field">
+              <input type="checkbox" class="cs-prof-check" id="cs-save-dex-prof" onchange="updateSaves()">
+              <span class="cs-save-label">DEX</span>
+              <span class="cs-save-val" id="cs-save-dex">+0</span>
+            </div>
+            <div class="cs-save-field">
+              <input type="checkbox" class="cs-prof-check" id="cs-save-con-prof" onchange="updateSaves()">
+              <span class="cs-save-label">CON</span>
+              <span class="cs-save-val" id="cs-save-con">+0</span>
+            </div>
+            <div class="cs-save-field">
+              <input type="checkbox" class="cs-prof-check" id="cs-save-int-prof" onchange="updateSaves()">
+              <span class="cs-save-label">INT</span>
+              <span class="cs-save-val" id="cs-save-int">+0</span>
+            </div>
+            <div class="cs-save-field">
+              <input type="checkbox" class="cs-prof-check" id="cs-save-wis-prof" onchange="updateSaves()">
+              <span class="cs-save-label">WIS</span>
+              <span class="cs-save-val" id="cs-save-wis">+0</span>
+            </div>
+            <div class="cs-save-field">
+              <input type="checkbox" class="cs-prof-check" id="cs-save-cha-prof" onchange="updateSaves()">
+              <span class="cs-save-label">CHA</span>
+              <span class="cs-save-val" id="cs-save-cha">+0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Equipment & Features -->
+        <div>
+          <div class="cs-section-title">Equipment & Items</div>
+          <textarea class="cs-notes-input" id="cs-equipment" placeholder="Quarterstaff, Spellbook, Component pouch, Scholar's pack..." rows="3"></textarea>
+        </div>
+
+        <div>
+          <div class="cs-section-title">Features & Traits</div>
+          <textarea class="cs-notes-input" id="cs-features" placeholder="Spellcasting (INT), Arcane Recovery... Passive Perception: 10" rows="3"></textarea>
+        </div>
+
+        <div>
+          <div class="cs-section-title">Character Backstory</div>
+          <textarea class="cs-notes-input" id="cs-backstory" placeholder="Where did your character come from? What drives them? What secrets do they keep?" rows="5"></textarea>
+        </div>
+
+        <div>
+          <div class="cs-section-title">Notes</div>
+          <textarea class="cs-notes-input" id="cs-notes" placeholder="Quest notes, NPC names, important lore..." rows="3"></textarea>
+        </div>
+      </div>
+
+      <div class="cs-footer">
+        <span class="cs-status" id="cs-status">No character loaded</span>
+        <div style="display:flex;gap:6px;">
+          <button class="cs-send-btn" onclick="exportSheet()" style="background:linear-gradient(135deg,rgba(56,189,248,0.18),rgba(56,189,248,0.06));border-color:rgba(56,189,248,0.35);color:#7dd3fc;">📤 Export .md</button>
+          <button class="cs-send-btn" onclick="sendSheetToDM()">⚔️ Share with DM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DM Toolbar: Import / Export / Sheet / New Session -->
+    <div id="dm-toolbar">
+      <button class="dm-tool-btn" id="import-btn" onclick="importCharacterFile()" title="Import a character sheet or lore file (.md, .txt, .json)">
+        📂 Import
+      </button>
+      <button class="dm-tool-btn export-btn" id="export-btn" onclick="exportChronicle()" title="Export session as a Markdown chronicle">
+        📜 Export
+      </button>
+      <button class="dm-tool-btn sheet-btn" id="sheet-btn" onclick="toggleCharSheet()" title="Open the Character Sheet builder">
+        📋 Sheet
+      </button>
+      <span id="import-status"></span>
+      <span class="toolbar-spacer"></span>
+      <button class="dm-tool-btn new-session-tool" onclick="newSession()" title="Clear history and start a new session">
+        🔄 New Session
+      </button>
+    </div>
 
     <!-- Toast notification -->
     <div id="toast"></div>
@@ -585,6 +1272,9 @@
     const modelName = document.getElementById('model-name');
     const suggestionsEl = document.getElementById('suggestions');
     const ttsAudio = document.getElementById('tts-audio');
+    const dmToolbar = document.getElementById('dm-toolbar');
+    const importStatus = document.getElementById('import-status');
+    const importBtn = document.getElementById('import-btn');
 
     let chatHistory = [];
     let isStreaming = false;
@@ -666,6 +1356,7 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
         inputEl.placeholder = 'Declare your action, adventurer...';
         submodeBadge.style.display = '';
         newSessionBtn.style.display = '';
+        dmToolbar.style.display = 'flex';
         updateSubmodeBadge(currentSubMode);
         // Swap suggestion chips
         document.getElementById('chip-joke').textContent = '🗡️ Start an adventure';
@@ -682,6 +1373,7 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
         inputEl.placeholder = 'Speak to the wizard...';
         submodeBadge.style.display = 'none';
         newSessionBtn.style.display = 'none';
+        dmToolbar.style.display = 'none';
         // Restore suggestion chips
         document.getElementById('chip-joke').textContent = '🎭 Tell a joke';
         document.getElementById('chip-joke').onclick = () => sendSuggestion('Tell me a wizard joke');
@@ -737,6 +1429,302 @@ Tone: Atmospheric, slightly mysterious, classic tabletop DM. Always leave the pl
       welcomeEl.style.display = '';
       document.getElementById('messages').style.display = 'none';
       wizard.resetGameState();
+    }
+
+    // ── Import character / lore file ──
+    async function importCharacterFile() {
+      if (isStreaming) return;
+      importBtn.disabled = true;
+      importStatus.textContent = '⏳ Choosing file...';
+      importStatus.classList.add('show');
+
+      try {
+        const result = await wizard.importFile();
+        if (!result) {
+          // User cancelled
+          importStatus.textContent = '';
+          importStatus.classList.remove('show');
+          importBtn.disabled = false;
+          return;
+        }
+        if (result.error) {
+          showToast('⚠️ Import failed: ' + result.error);
+          importStatus.textContent = '';
+          importStatus.classList.remove('show');
+          importBtn.disabled = false;
+          return;
+        }
+
+        importStatus.textContent = `✓ ${result.name}`;
+        showToast(`📂 Imported: ${result.name}`);
+
+        // Build the import message and send it to the DM
+        const importMsg = [
+          `[IMPORT] — **${result.name}**`,
+          ``,
+          result.content
+        ].join('\n');
+
+        inputEl.value = importMsg;
+        await sendMessage();
+
+        setTimeout(() => {
+          importStatus.textContent = '';
+          importStatus.classList.remove('show');
+        }, 3000);
+      } catch (e) {
+        showToast('⚠️ Import error: ' + e.message);
+        importStatus.textContent = '';
+        importStatus.classList.remove('show');
+      } finally {
+        importBtn.disabled = false;
+      }
+    }
+
+    // ── Export chronicle ──
+    function exportChronicle() {
+      if (chatHistory.length === 0) {
+        showToast('⚠️ Nothing to export — start an adventure first!');
+        return;
+      }
+      // Inject [EXPORT] into the chat flow (backend handles everything)
+      sendSuggestion('[EXPORT]');
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CHARACTER SHEET LOGIC
+    // ══════════════════════════════════════════════════════════
+    const charSheetPanel = document.getElementById('char-sheet-panel');
+    const sheetBtn       = document.getElementById('sheet-btn');
+    const csStatus       = document.getElementById('cs-status');
+    let charSheetOpen    = false;
+
+    const STATS = ['str','dex','con','int','wis','cha'];
+
+    function statMod(val) {
+      return Math.floor((parseInt(val) || 10) / 2) - 5;
+    }
+
+    function fmtMod(n) {
+      return (n >= 0 ? '+' : '') + n;
+    }
+
+    function profBonus() {
+      const lvl = parseInt(document.getElementById('cs-level').value) || 1;
+      return Math.ceil(lvl / 4) + 1;  // Standard 5e PB
+    }
+
+    function updateMods() {
+      for (const stat of STATS) {
+        const val = document.getElementById(`cs-${stat}`).value;
+        const mod = statMod(val);
+        const el  = document.getElementById(`cs-${stat}-mod`);
+        el.textContent = fmtMod(mod);
+        el.className = 'cs-stat-mod ' + (mod > 0 ? 'pos' : mod < 0 ? 'neg' : '');
+      }
+      updateSaves();
+    }
+
+    function updateSaves() {
+      const pb = profBonus();
+      for (const stat of STATS) {
+        const base = statMod(document.getElementById(`cs-${stat}`).value);
+        const prof = document.getElementById(`cs-save-${stat}-prof`).checked;
+        const total = base + (prof ? pb : 0);
+        document.getElementById(`cs-save-${stat}`).textContent = fmtMod(total);
+      }
+    }
+
+    function updateSheet() {
+      updateMods();
+    }
+
+    function getSheetData() {
+      return {
+        name:       document.getElementById('cs-name').value,
+        player:     document.getElementById('cs-player').value,
+        race:       document.getElementById('cs-race').value,
+        class:      document.getElementById('cs-class').value,
+        background: document.getElementById('cs-background').value,
+        level:      parseInt(document.getElementById('cs-level').value) || 1,
+        xp:         parseInt(document.getElementById('cs-xp').value) || 0,
+        alignment:  document.getElementById('cs-alignment').value,
+        hpMax:      parseInt(document.getElementById('cs-hp-max').value) || 0,
+        hpCur:      parseInt(document.getElementById('cs-hp-cur').value) || 0,
+        ac:         parseInt(document.getElementById('cs-ac').value) || 10,
+        speed:      parseInt(document.getElementById('cs-speed').value) || 30,
+        stats: Object.fromEntries(STATS.map(s => [s, parseInt(document.getElementById(`cs-${s}`).value) || 10])),
+        saves: Object.fromEntries(STATS.map(s => [s, document.getElementById(`cs-save-${s}-prof`).checked])),
+        equipment:  document.getElementById('cs-equipment').value,
+        features:   document.getElementById('cs-features').value,
+        backstory:  document.getElementById('cs-backstory').value,
+        notes:      document.getElementById('cs-notes').value,
+      };
+    }
+
+    function populateSheet(data) {
+      if (!data) return;
+      const set = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+      set('cs-name', data.name);
+      set('cs-player', data.player);
+      set('cs-race', data.race);
+      set('cs-class', data.class);
+      set('cs-background', data.background);
+      set('cs-level', data.level);
+      set('cs-xp', data.xp);
+      set('cs-alignment', data.alignment);
+      set('cs-hp-max', data.hpMax);
+      set('cs-hp-cur', data.hpCur);
+      set('cs-ac', data.ac);
+      set('cs-speed', data.speed);
+      if (data.stats) STATS.forEach(s => set(`cs-${s}`, data.stats[s]));
+      if (data.saves) STATS.forEach(s => {
+        const el = document.getElementById(`cs-save-${s}-prof`);
+        if (el) el.checked = !!data.saves[s];
+      });
+      set('cs-equipment', data.equipment);
+      set('cs-features', data.features);
+      set('cs-backstory', data.backstory);
+      set('cs-notes', data.notes);
+      updateMods();
+    }
+
+    function toggleCharSheet() {
+      charSheetOpen ? closeCharSheet() : openCharSheet();
+    }
+
+    async function openCharSheet() {
+      charSheetOpen = true;
+      charSheetPanel.classList.add('open');
+      sheetBtn.classList.add('active');
+      // Load persisted data
+      try {
+        const saved = await wizard.getCharacterSheet();
+        if (saved && saved.name) {
+          populateSheet(saved);
+          csStatus.textContent = `Loaded: ${saved.name} · Lvl ${saved.level} ${saved.class}`;
+        } else {
+          csStatus.textContent = 'New character — fill in your details';
+        }
+      } catch(e) {
+        csStatus.textContent = 'Ready to create your character';
+      }
+    }
+
+    function closeCharSheet() {
+      charSheetOpen = false;
+      charSheetPanel.classList.remove('open');
+      sheetBtn.classList.remove('active');
+    }
+
+    async function saveCharacterSheet() {
+      const data = getSheetData();
+      try {
+        await wizard.saveCharacterSheet(data);
+        const name = data.name || 'Unnamed Hero';
+        csStatus.textContent = `✓ Saved: ${name} · Lvl ${data.level} ${data.class || ''}`;
+        showToast(`📋 Character sheet saved!`);
+      } catch(e) {
+        showToast('⚠️ Could not save sheet: ' + e.message);
+      }
+    }
+
+    function sendSheetToDM() {
+      const d = getSheetData();
+      const lines = [
+        `[IMPORT] — **Character Sheet: ${d.name || 'Unnamed'}**`,
+        ``,
+        `**Race:** ${d.race || '?'}  **Class:** ${d.class || '?'}  **Level:** ${d.level}  **Alignment:** ${d.alignment || '?'}`,
+        `**HP:** ${d.hpCur}/${d.hpMax}  **AC:** ${d.ac}  **Speed:** ${d.speed} ft`,
+        ``,
+        `**Stats:** STR ${d.stats.str} DEX ${d.stats.dex} CON ${d.stats.con} INT ${d.stats.int} WIS ${d.stats.wis} CHA ${d.stats.cha}`,
+        ``,
+        d.equipment ? `**Equipment:** ${d.equipment}` : '',
+        d.features  ? `**Features:** ${d.features}`   : '',
+        d.backstory ? `**Backstory:** ${d.backstory}`  : '',
+        d.notes     ? `**Notes:** ${d.notes}`          : '',
+      ].filter(Boolean).join('\n');
+      closeCharSheet();
+      inputEl.value = lines;
+      sendMessage();
+    }
+
+    // ── Character Sheet — Roll & Export ──
+    const NAME_PRE  = ['Ald','Bal','Cal','Dar','El','Fer','Gal','Hal','Jor','Kal','Lyr','Mor','Nor','Per','Ry','Sal','Thal','Val','Wil','Xan','Zar','Bran','Cas','Dorn','Fen'];
+    const NAME_SUF  = ['ric','an','en','ion','ius','as','os','ra','wyn','iel','ath','in','orn','ax','oc','ris','den','ov','eth','um','ald'];
+    const CLASSES_HP = { Barbarian:12, Fighter:10, Paladin:10, Ranger:10, Monk:8, Bard:8, Cleric:8, Druid:8, Rogue:8, Warlock:8, Sorcerer:6, Wizard:6 };
+
+    function randEl(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    function genName()   { return randEl(NAME_PRE) + randEl(NAME_SUF); }
+    function rollD6()    { return Math.floor(Math.random() * 6) + 1; }
+    function roll4d6dl() {
+      const d = [rollD6(), rollD6(), rollD6(), rollD6()].sort((a, b) => a - b);
+      return d[1] + d[2] + d[3]; // drop lowest
+    }
+
+    function rollStats() {
+      STATS.forEach(s => {
+        const val = roll4d6dl();
+        document.getElementById(`cs-${s}`).value = val;
+        const box = document.getElementById(`cs-${s}`).closest('.cs-stat-box');
+        if (box) {
+          box.classList.remove('rolling');
+          void box.offsetWidth; // force reflow so animation restarts
+          box.classList.add('rolling');
+          setTimeout(() => box.classList.remove('rolling'), 500);
+        }
+      });
+      updateMods();
+      csStatus.textContent = '🎲 Stats rolled — 4d6 drop lowest';
+    }
+
+    function rollFullSheet() {
+      const races       = ['Human','Elf','High Elf','Wood Elf','Dwarf','Hill Dwarf','Halfling','Gnome','Half-Elf','Half-Orc','Tiefling','Dragonborn','Aasimar','Tabaxi'];
+      const classes     = ['Barbarian','Bard','Cleric','Druid','Fighter','Monk','Paladin','Ranger','Rogue','Sorcerer','Warlock','Wizard'];
+      const backgrounds = ['Acolyte','Charlatan','Criminal','Entertainer','Folk Hero','Guild Artisan','Hermit','Noble','Outlander','Sage','Sailor','Soldier','Urchin'];
+      const alignments  = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','True Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
+
+      const race = randEl(races);
+      const cls  = randEl(classes);
+      const bg   = randEl(backgrounds);
+      const aln  = randEl(alignments);
+      const name = genName();
+
+      document.getElementById('cs-name').value       = name;
+      document.getElementById('cs-race').value       = race;
+      document.getElementById('cs-class').value      = cls;
+      document.getElementById('cs-background').value = bg;
+      document.getElementById('cs-alignment').value  = aln;
+      document.getElementById('cs-level').value      = 1;
+      document.getElementById('cs-xp').value         = 0;
+      document.getElementById('cs-speed').value      = 30;
+
+      rollStats(); // fills all stat boxes with animation
+
+      // Derive HP and AC from rolled stats
+      const conVal = parseInt(document.getElementById('cs-con').value) || 10;
+      const dexVal = parseInt(document.getElementById('cs-dex').value) || 10;
+      const conMod = Math.floor(conVal / 2) - 5;
+      const dexMod = Math.floor(dexVal / 2) - 5;
+      const hitDie = CLASSES_HP[cls] || 8;
+      const hp     = Math.max(1, hitDie + conMod);
+
+      document.getElementById('cs-hp-max').value = hp;
+      document.getElementById('cs-hp-cur').value = hp;
+      document.getElementById('cs-ac').value     = 10 + dexMod;
+
+      csStatus.textContent = `✨ Rolled: ${name} the ${race} ${cls} (${aln})`;
+    }
+
+    async function exportSheet() {
+      const d = getSheetData();
+      if (!d.name) { showToast('⚠️ Add a character name before exporting.'); return; }
+      try {
+        const result = await wizard.exportCharacterSheet(d);
+        if (result && result.filePath) showToast('📤 Sheet exported successfully!');
+      } catch(e) {
+        showToast('⚠️ Export failed: ' + (e.message || e));
+      }
     }
 
     // ── Messages ──

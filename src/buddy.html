@@ -298,6 +298,13 @@
     let lightningBolts = [];
     let windAngle = 0.15; // slight eastward wind
 
+    // ── Arcane Smoke / Cloud Particles ──
+    // Soft puffs that pool at the wizard's feet and drift upward.
+    let smokeParticles = [];
+    const SMOKE_MAX = 40;
+    const SMOKE_SPAWN_INTERVAL = 0.14; // seconds between spawns
+    let smokeSpawnTimer = 0;
+
     // ── Rain Particle ──
     function spawnRainDrop() {
       return {
@@ -599,6 +606,94 @@
       wCtx.restore();
     }
 
+    // ══════════════════════════════════════════════════
+    // SMOKE / CLOUD PARTICLE SYSTEM
+    // Ethereal puffs that orbit the wizard's base.
+    // Rendered on the weather-canvas using radial gradients
+    // so they composite softly over the transparent sprite.
+    // ══════════════════════════════════════════════════
+
+    function spawnSmokePuff() {
+      const cw = weatherCanvas.width;
+      const ch = weatherCanvas.height;
+      // Spawn across the bottom 55% — wraps the whole wizard body in mist
+      const spawnBand = ch * 0.55;
+      const size = 22 + Math.random() * 48;   // bigger puffs
+      // Purple-to-white tint with occasional blue-grey wisps
+      const hue = 260 + (Math.random() - 0.5) * 60;  // 230–290
+      const sat = 15 + Math.random() * 45;
+      const lit = 68 + Math.random() * 28;
+      return {
+        x: cw * 0.02 + Math.random() * cw * 0.96,   // full-width spread
+        y: ch - Math.random() * spawnBand,
+        vx: (Math.random() - 0.5) * 0.45,
+        vy: -(0.14 + Math.random() * 0.32),          // slow upward rise
+        size,
+        alpha: 0,
+        maxAlpha: 0.20 + Math.random() * 0.22,       // noticeably denser
+        life: 0,
+        maxLife: 4.0 + Math.random() * 4.5,
+        hue, sat, lit,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.003,
+        scaleSpeed: 0.008 + Math.random() * 0.007
+      };
+    }
+
+    function updateSmoke(dt) {
+      smokeSpawnTimer += dt;
+      if (smokeSpawnTimer >= SMOKE_SPAWN_INTERVAL && smokeParticles.length < SMOKE_MAX) {
+        smokeSpawnTimer = 0;
+        smokeParticles.push(spawnSmokePuff());
+      }
+
+      for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        const p = smokeParticles[i];
+        p.life += dt;
+        const progress = p.life / p.maxLife; // 0 → 1
+
+        // Fade in during first 20%, hold, fade out in last 25%
+        if (progress < 0.20) {
+          p.alpha = (progress / 0.20) * p.maxAlpha;
+        } else if (progress > 0.75) {
+          p.alpha = ((1 - progress) / 0.25) * p.maxAlpha;
+        } else {
+          p.alpha = p.maxAlpha;
+        }
+
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.rotation += p.rotSpeed;
+        p.size += p.scaleSpeed * dt * 60;  // puff grows as it rises
+
+        if (p.life >= p.maxLife) {
+          smokeParticles.splice(i, 1);
+        }
+      }
+    }
+
+    function drawSmoke() {
+      for (const p of smokeParticles) {
+        if (p.alpha <= 0.005) continue;
+        wCtx.save();
+        wCtx.translate(p.x, p.y);
+        wCtx.rotate(p.rotation);
+
+        // Soft radial gradient puff
+        const grad = wCtx.createRadialGradient(0, 0, 0, 0, 0, p.size);
+        grad.addColorStop(0, `hsla(${p.hue}, ${p.sat}%, ${p.lit}%, ${p.alpha})`);
+        grad.addColorStop(0.55, `hsla(${p.hue}, ${p.sat}%, ${p.lit}%, ${p.alpha * 0.45})`);
+        grad.addColorStop(1,  `hsla(${p.hue}, ${p.sat}%, ${p.lit}%, 0)`);
+
+        wCtx.fillStyle = grad;
+        wCtx.beginPath();
+        // Slightly elliptical for a billowy cloud feel
+        wCtx.ellipse(0, 0, p.size, p.size * 0.72, 0, 0, Math.PI * 2);
+        wCtx.fill();
+        wCtx.restore();
+      }
+    }
+
     // ── Set weather from outside ──
     function setWeather(mode, intensity) {
       weatherMode = mode || 'none';
@@ -708,32 +803,8 @@
     }
 
     function drawBlinkOverlay() {
-      if (blinkAmount <= 0.01) return;
-      // Only draw blink overlay when face is in standard upright position
-      const uprightStates = ['idle', 'walking', 'talking', 'laughing', 'sad', 'happy', 'thinking'];
-      if (!uprightStates.includes(currentState)) return;
-
-      const eyeWidth = canvas.width * 0.038;
-      const eyeGap = canvas.width * 0.10;
-      const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
-      const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
-      const leftCenterX = eyeCenterX - eyeGap * 0.5;
-      const rightCenterX = eyeCenterX + eyeGap * 0.5;
-
-      // Eyelid closes from above — a small filled ellipse per eye
-      const lidHeight = canvas.height * 0.015 * blinkAmount;
-
-      ctx.save();
-      // Use a skin-tone that blends with the wizard's face
-      ctx.fillStyle = `rgba(198, 156, 109, ${0.7 + blinkAmount * 0.3})`;
-
-      for (const centerX of [leftCenterX, rightCenterX]) {
-        ctx.beginPath();
-        ctx.ellipse(centerX, eyeY - lidHeight * 0.2, eyeWidth * 0.8, lidHeight, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
+      // Disabled: sprite sheet handles the eyes visually.
+      return;
     }
 
     // ── Cursor Tracking (Eye-Following) ──
@@ -771,52 +842,43 @@
       gazeSmoothedY += (gazeY - gazeSmoothedY) * t;
     }
 
-    // Draw dynamic pupil dots that follow the cursor.
-    // These sit OVER the sprite's painted eyes.
+    // Draw a soft cursor-tracking eye gleam.
+    // Uses a tiny radial glow (not a dark dot) so it adds magic
+    // instead of covering the pixel art.
     function drawGazePupils() {
-      // Only draw pupils when face is in standard upright position
-      const uprightStates = ['idle', 'walking', 'talking', 'laughing', 'sad', 'happy', 'thinking'];
+      // Only in calm, face-forward states
+      const uprightStates = ['idle', 'talking', 'laughing'];
       if (!uprightStates.includes(currentState)) return;
-      if (blinkAmount > 0.7) return;
+      if (Math.abs(gazeSmoothedX) < 0.05 && Math.abs(gazeSmoothedY) < 0.05) return;
 
-      // Eye geometry — matches drawBlinkOverlay positions
-      const eyeGap = canvas.width * 0.10;
-      const eyeY = canvas.height * 0.38 + hoverOffsetY * 0.08;
-      const eyeCenterX = canvas.width * 0.5 + canvas.width * 0.03;
-      const leftCenterX = eyeCenterX - eyeGap * 0.5;
-      const rightCenterX = eyeCenterX + eyeGap * 0.5;
+      // ── Eye geometry (tuned to match the idle wizard frame) ──
+      // Y: ~29% from top (hat brim sits around 22%, eyes just below)
+      // X: slightly left of centre (wizard faces viewer with slight right-lean)
+      const eyeY      = canvas.height * 0.29;
+      const eyeGap    = canvas.width  * 0.075;
+      const eyeCenX   = canvas.width  * 0.48;
+      const leftEyeX  = eyeCenX - eyeGap;
+      const rightEyeX = eyeCenX + eyeGap * 0.6;
 
-      // How far the pupil can shift (in pixels)
-      const maxShiftX = canvas.width * 0.018;
-      const maxShiftY = canvas.height * 0.012;
-
-      // Pupil size (relative to canvas)
-      const pupilRadius = Math.max(1, canvas.width * 0.012);
+      // How far the gleam shifts
+      const maxSX = canvas.width  * 0.016;
+      const maxSY = canvas.height * 0.010;
 
       ctx.save();
+      for (const cx of [leftEyeX, rightEyeX]) {
+        const px = cx + gazeSmoothedX * maxSX;
+        const py = eyeY + gazeSmoothedY * maxSY;
 
-      for (const centerX of [leftCenterX, rightCenterX]) {
-        const px = centerX + gazeSmoothedX * maxShiftX;
-        const py = eyeY + gazeSmoothedY * maxShiftY;
-
-        // Tiny dark pupil dot
-        ctx.fillStyle = 'rgba(15, 5, 30, 0.85)';
+        // Soft specular gleam — white/lavender glow, very faint
+        const gleam = ctx.createRadialGradient(px, py, 0, px, py, 3);
+        gleam.addColorStop(0,   `rgba(230, 220, 255, 0.55)`);
+        gleam.addColorStop(0.4, `rgba(200, 180, 255, 0.20)`);
+        gleam.addColorStop(1,   `rgba(180, 160, 255, 0)`);
+        ctx.fillStyle = gleam;
         ctx.beginPath();
-        ctx.arc(px, py, pupilRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Even tinier specular highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.beginPath();
-        ctx.arc(
-          px - pupilRadius * 0.3,
-          py - pupilRadius * 0.3,
-          pupilRadius * 0.35,
-          0, Math.PI * 2
-        );
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
         ctx.fill();
       }
-
       ctx.restore();
     }
 
@@ -843,7 +905,7 @@
         const r = d[idx], g = d[idx+1], b = d[idx+2];
         const spread = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
         const avg = (r + g + b) / 3;
-        return spread < 28 && avg > 105 && avg < 240;
+        return spread < 20 && avg > 110 && avg < 240;
       }
 
       // ── Phase 1: BFS Flood Fill from edges ──
@@ -880,8 +942,8 @@
 
       // ── Phase 2: Erosion passes ──
       // Any semi-neutral pixel touching a transparent pixel gets removed.
-      // Run multiple passes to erode inward through JPEG boundary blur.
-      for (let pass = 0; pass < 3; pass++) {
+      // Run 2 passes to erode inward through JPEG boundary blur.
+      for (let pass = 0; pass < 2; pass++) {
         const toErase = [];
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
@@ -1081,7 +1143,13 @@
 
       processedFrames = {};
       for (const [frameIdx, [col, row]] of Object.entries(frameGrid)) {
-        processedFrames[frameIdx] = extractFrame(img, col, row);
+        let fc = extractFrame(img, col, row);
+        // ── Background removal pipeline ──
+        // Pass 1: corner-sample flood fill (catches any solid bg colour)
+        fc = removeCheckerboardBySamples(fc);
+        // Pass 2: spread-based flood fill + erosion (catches JPEG neutral halos)
+        fc = removeCheckerboard(fc);
+        processedFrames[frameIdx] = fc;
       }
 
       sheetReady = true;
@@ -1204,9 +1272,16 @@
         }
       }
 
-      // ── Weather overlay ──
+      // ── Smoke / cloud particles (always active) ──
       const safeDt = Math.max(0, Math.min(dt || 0, 0.1));
+      updateSmoke(safeDt);
+
+      // ── Weather overlay ──
       updateWeather(safeDt);
+
+      // Draw smoke behind weather but on the overlay canvas
+      wCtx.clearRect(0, 0, weatherCanvas.width, weatherCanvas.height);
+      drawSmoke();
       drawWeather();
 
       requestAnimationFrame(animate);
